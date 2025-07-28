@@ -24,11 +24,11 @@ public class ARCameraController {
      */
     public void initializeVuforia() {
         try {
-            if (vuforiaManager.setupVuforia()) {
-                callback.onVuforiaInitialized();
-            } else {
-                callback.onVuforiaError("Vuforia initialization failed");
+            // Initialize Vuforia
+            if (vuforiaManager != null) {
+                vuforiaManager.setupVuforia(); // 移除 if 檢查，因為方法返回 void
             }
+            callback.onVuforiaInitialized();
         } catch (Exception e) {
             callback.onVuforiaError("Vuforia initialization error: " + e.getMessage());
         }

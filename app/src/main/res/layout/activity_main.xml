@@ -1,46 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
 
-    <!-- Vuforia camera view -->
-    <FrameLayout
-        android:id="@+id/vuforia_camera_view"
+    <!-- ✅ CameraX PreviewView for camera preview -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="#000000" />
+        android:layout_height="match_parent" />
 
-    <TextView
-        android:id="@+id/tv_status"
+    <!-- Filament 3D 渲染视图 -->
+    <SurfaceView
+        android:id="@+id/filamentSurface"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Vuforia AR Status"
-        android:gravity="center"
-        android:padding="8dp"
-        android:background="#F0F0F0" />
+        android:layout_height="match_parent"
+        android:layout_gravity="center" />
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:padding="16dp">
-
-        <Button
-            android:id="@+id/btn_load_model"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Load Giraffe Model"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/btn_place_object"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Start AR"
-            android:enabled="false" />
-    </LinearLayout>
-
-</LinearLayout> 
+</FrameLayout> 
