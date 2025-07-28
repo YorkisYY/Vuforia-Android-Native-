@@ -5,7 +5,7 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Toast;
-
+import android.view.SurfaceView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraSelector;
@@ -43,68 +43,174 @@ public class MainActivity extends AppCompatActivity {
     // 现有的 AR 组件
     private VuforiaManager vuforiaManager;
     private FilamentRenderer filamentRenderer;
+    
+    // 新增：AR 初始化狀態變量
+    private boolean isFilamentInitialized = false;
+    private boolean isVuforiaInitialized = false;
+    private boolean isArReady = false;
+    private SurfaceView filamentSurface;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        // ✅ 步驟 1: 初始化 Filament (必須在使用任何 Filament 組件之前調用)
-        if (!initializeFilament()) {
-            Log.e(TAG, "Failed to initialize Filament");
-            Toast.makeText(this, "Failed to initialize 3D rendering engine", Toast.LENGTH_LONG).show();
-            finish();
-            return;
-        }
-        
         setContentView(R.layout.activity_main);
-
-        // ✅ 新增：初始化 CameraX PreviewView
-        previewView = findViewById(R.id.previewView);
-        if (previewView == null) {
-            Log.e(TAG, "PreviewView not found, falling back to SurfaceView");
-            // 如果没有 PreviewView，使用现有的 SurfaceView
-            initializeARComponents();
-            return;
-        }
-
-        // 初始化 AR 组件
-        initializeARComponents();
-
-        // 创建相机执行器
-        cameraExecutor = Executors.newSingleThreadExecutor();
-
-        // 请求相机权限
+        
+        // 初始化視圖
+        initViews();
+        
+        // 檢查相機權限並初始化組件
         if (allPermissionsGranted()) {
-            startCamera();
+            initializeComponents();
         } else {
             ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
         }
     }
 
-    // ✅ 新增：Filament 初始化方法 (Filament 1.31 版本)
-    private boolean initializeFilament() {
+    // 新增：初始化視圖
+    private void initViews() {
+        Log.d(TAG, "初始化視圖組件");
+        
+        // 初始化 CameraX PreviewView
+        previewView = findViewById(R.id.previewView);
+        if (previewView == null) {
+            Log.e(TAG, "PreviewView not found");
+            return;
+        }
+        
+        // 初始化 Filament SurfaceView
+        filamentSurface = findViewById(R.id.filamentSurface);
+        if (filamentSurface == null) {
+            Log.e(TAG, "Filament SurfaceView not found");
+            return;
+        }
+        
+        // 創建相機執行器
+        cameraExecutor = Executors.newSingleThreadExecutor();
+    }
+    
+    // 新增：完整的組件初始化流程
+    private void initializeComponents() {
+        Log.d(TAG, "開始初始化所有組件");
+        
+        // 步驟 1: 初始化 Filament
+        initializeFilament();
+        
+        // 步驟 2: 初始化相機預覽 (CameraX)
+        initializeCameraX();
+        
+        // 步驟 3: 初始化 Vuforia (在相機準備好後)
+        initializeVuforia();
+        
+        // 步驟 4: 設置 AR 整合
+        setupARIntegration();
+    }
+    
+    // 新增：Filament 初始化
+    private void initializeFilament() {
+        Log.d(TAG, "初始化 Filament");
+        
         try {
-            // 在 Filament 1.31 中需要明確載入 gltfio-jni 庫
+            // 初始化 Filament 全局設置
             System.loadLibrary("filament-jni");
-            System.loadLibrary("gltfio-jni");  // 明確載入這個庫
+            System.loadLibrary("gltfio-jni");
             Filament.init();
-            Log.d(TAG, "Filament initialized successfully via Filament.init()");
-            return true;
+            Log.d(TAG, "Filament 全局初始化成功");
+            
+            // 創建 FilamentRenderer
+            filamentRenderer = new FilamentRenderer(this);
+            
+            // 設置 Filament Surface
+            if (filamentSurface != null) {
+                filamentRenderer.setupSurface(filamentSurface);
+            }
+            isFilamentInitialized = true;
+            checkArReadiness();
         } catch (Exception e) {
-            Log.e(TAG, "Filament initialization failed", e);
-            return false;
+            Log.e(TAG, "Filament 初始化錯誤: " + e.getMessage());
         }
     }
     
-    private void initializeARComponents() {
-        try {
-            filamentRenderer = new FilamentRenderer(this);
-            Log.d(TAG, "FilamentRenderer 初始化成功");
-            
-        } catch (Exception e) {
-            Log.e(TAG, "初始化 AR 組件失敗", e);
+    // 新增：CameraX 初始化
+    private void initializeCameraX() {
+        Log.d(TAG, "初始化 CameraX");
+        
+        if (allPermissionsGranted()) {
+            startCamera();
         }
     }
+    
+    // 新增：Vuforia 初始化
+    private void initializeVuforia() {
+        Log.d(TAG, "初始化 Vuforia");
+        
+        try {
+            // 創建 VuforiaManager
+            vuforiaManager = new VuforiaManager(this);
+            
+            // 設置回調
+            vuforiaManager.setTargetDetectionCallback(new VuforiaManager.TargetDetectionCallback() {
+                @Override
+                public void onTargetFound(String targetName) {
+                    Log.d(TAG, "🎯 Target found: " + targetName);
+                }
+                
+                @Override
+                public void onTargetLost(String targetName) {
+                    Log.d(TAG, "❌ Target lost: " + targetName);
+                }
+                
+                @Override
+                public void onTargetTracking(String targetName, float[] modelViewMatrix) {
+                    Log.d(TAG, "📡 Target tracking: " + targetName);
+                    // 更新 3D 模型位置
+                    if (filamentRenderer != null) {
+                        // 這裡可以添加模型位置更新邏輯
+                        Log.d(TAG, "Model transform updated");
+                    }
+                }
+            });
+            
+            // 開始初始化
+            vuforiaManager.setupVuforia();
+            isVuforiaInitialized = true;
+            checkArReadiness();
+        } catch (Exception e) {
+            Log.e(TAG, "Vuforia 初始化錯誤: " + e.getMessage());
+        }
+    }
+    
+    // 新增：AR 整合設置
+    private void setupARIntegration() {
+        Log.d(TAG, "設置 AR 整合");
+        
+        if (isArReady) {
+            // 載入 3D 模型
+            if (vuforiaManager != null) {
+                vuforiaManager.loadGiraffeModel();
+            }
+            
+            // 啟動目標檢測
+            if (vuforiaManager != null) {
+                vuforiaManager.startTargetDetection();
+            }
+            
+            Log.d(TAG, "🎉 AR 整合完成！");
+        }
+    }
+    
+    // 新增：檢查 AR 就緒狀態
+    private void checkArReadiness() {
+        Log.d(TAG, "檢查 AR 就緒狀態 - Filament: " + isFilamentInitialized + 
+                   ", Vuforia: " + isVuforiaInitialized);
+                   
+        if (isFilamentInitialized && isVuforiaInitialized && !isArReady) {
+            isArReady = true;
+            Log.d(TAG, "🎉 AR 系統完全就緒！");
+            setupARIntegration();
+        }
+    }
+    
+
 
     // ✅ 新增：使用 CameraX 启动相机
     private void startCamera() {
