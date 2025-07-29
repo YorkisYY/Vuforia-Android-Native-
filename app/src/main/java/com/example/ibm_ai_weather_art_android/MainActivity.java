@@ -12,8 +12,13 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.google.android.filament.Filament; 
 import com.example.ibm_ai_weather_art_android.model.GLBReader;
+import android.app.AlertDialog;
+import android.content.Intent;
+import android.net.Uri;
+import android.provider.Settings;
 
 public class MainActivity extends AppCompatActivity {
+    private volatile boolean arInitializationRequested = false;
     private static final String TAG = "MainActivity";
     private static final int REQUEST_CODE_PERMISSIONS = 10;
     private static final String[] REQUIRED_PERMISSIONS = new String[]{Manifest.permission.CAMERA};
@@ -258,26 +263,34 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         Log.d(TAG, "onResume - 恢復 AR 組件");
         
-        // ✅ 修正：如果 Vuforia 尚未初始化且有权限，尝试初始化
-        if (allPermissionsGranted() && !isVuforiaInitialized()) {
-            Log.d(TAG, "🔄 Vuforia not initialized, attempting initialization in onResume");
+        // ✅ 如果已經成功初始化，只需要恢復
+        if (isVuforiaInitialized()) {
+            Log.d(TAG, "✅ Vuforia already initialized, just resuming...");
+            try {
+                if (vuforiaCoreManager != null) {
+                    vuforiaCoreManager.resumeVuforia();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error during Vuforia resume", e);
+            }
+            return;
+        }
+        
+        // ✅ 如果有權限但還沒初始化，且沒有請求過初始化
+        if (allPermissionsGranted() && !arInitializationRequested) {
+            Log.d(TAG, "🔄 Permissions granted, requesting AR initialization");
+            arInitializationRequested = true;
+            
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                if (!isVuforiaInitialized()) {  // 双重检查
+                if (!isVuforiaInitialized()) {  // 雙重檢查
                     Log.d(TAG, "🚀 Starting delayed AR initialization from onResume");
                     initializeAR();
+                } else {
+                    Log.d(TAG, "✅ Vuforia initialized while waiting");
                 }
             }, 500);
         }
-    
-    // ✅ 恢复已初始化的 Vuforia
-    try {
-        if (vuforiaCoreManager != null && isVuforiaInitialized()) {
-            vuforiaCoreManager.resumeVuforia();
-        }
-    } catch (Exception e) {
-        Log.e(TAG, "Error during Vuforia resume", e);
     }
-}
     
     @Override
     protected void onDestroy() {
@@ -310,16 +323,56 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
-                // ✅ 修正：添加延迟初始化 - Vuforia 11.x workaround
-                Log.d(TAG, "🔄 Camera permission granted, delayed AR initialization...");
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                    Log.d(TAG, "🚀 Starting delayed AR initialization (Vuforia 11.x workaround)");
-                    initializeAR();
-                }, 1000); // 延迟 1 秒让系统处理权限状态
+                Log.d(TAG, "🔄 Camera permission granted");
+                
+                // ✅ 如果已經初始化成功，不需要再初始化
+                if (isVuforiaInitialized()) {
+                    Log.d(TAG, "✅ Vuforia already initialized, no need to initialize again");
+                    return;
+                }
+                
+                // ✅ 如果還沒請求過初始化，現在請求
+                if (!arInitializationRequested) {
+                    arInitializationRequested = true;
+                    
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        if (!isVuforiaInitialized()) {
+                            Log.d(TAG, "🚀 Starting delayed AR initialization (3s delay for Vuforia 11.x)");
+                            initializeAR();
+                        } else {
+                            Log.d(TAG, "✅ Vuforia initialized while waiting");
+                        }
+                    }, 3000); // 3秒延遲
+                } else {
+                    Log.d(TAG, "⚠️ AR initialization already requested");
+                }
             } else {
-                Toast.makeText(this, "需要相机权限", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "需要相機權限", Toast.LENGTH_SHORT).show();
                 finish();
             }
         }
+    }
+    private void showPermissionResetDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle("Vuforia 初始化失敗")
+            .setMessage("這是 Vuforia 11.x 的已知問題。\n\n解決方法：\n1. 點擊'前往設置'\n2. 關閉相機權限\n3. 重新啟動應用\n4. 重新授予相機權限")
+            .setPositiveButton("前往設置", (dialog, which) -> {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    Uri uri = Uri.fromParts("package", getPackageName(), null);
+                    intent.setData(uri);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Log.e(TAG, "無法打開設置頁面", e);
+                    Toast.makeText(this, "請手動前往設置關閉相機權限", Toast.LENGTH_LONG).show();
+                }
+            })
+            .setNegativeButton("重試", (dialog, which) -> {
+                // ✅ 重置請求狀態並重試
+                arInitializationRequested = false;
+                ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
+            })
+            .setCancelable(false)
+            .show();
     }
     }

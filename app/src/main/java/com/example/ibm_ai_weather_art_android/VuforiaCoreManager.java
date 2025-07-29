@@ -11,6 +11,10 @@ import java.io.InputStream;
  * 移除了所有舊版 Java API 調用
  */
 public class VuforiaCoreManager {
+    private static volatile boolean isInitialized = false;
+    private static volatile boolean isInitializing = false;
+    private static final Object initLock = new Object();
+    private static Thread currentInitThread = null;
     private static final String TAG = "VuforiaCoreManager";
     private Context context;
     private static boolean libraryLoaded = false;
@@ -100,52 +104,148 @@ public class VuforiaCoreManager {
     
     // ==================== 初始化方法 ====================
     public void setupVuforia() {
-        try {
-            Log.d(TAG, "Setting up Vuforia...");
-            
-            // 1. 加載原生庫
-            if (!loadNativeLibrary()) {
-                Log.e(TAG, "Failed to load native library");
-                notifyInitializationFailed();
+        synchronized (initLock) {
+            // ✅ 如果已經初始化成功，直接返回成功
+            if (isInitialized) {
+                Log.d(TAG, "✅ Vuforia already initialized successfully, skipping...");
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    notifyInitializationSuccess();
+                });
                 return;
             }
             
-            // 2. ✅ 關鍵：必須先設置 Android 上下文
-            Log.d(TAG, "Setting Android context...");
-            setAndroidContextNative(context);
-            
-            // 3. 設置資源管理器
-            Log.d(TAG, "Setting asset manager...");
-            setAssetManagerNative(context.getAssets());
-            
-            // 4. 初始化 Vuforia Engine（這裡可能會失敗）
-            Log.d(TAG, "Initializing Vuforia Engine...");
-            boolean vuforiaInitialized = initVuforiaEngineNative(getLicenseKey());
-            
-            if (vuforiaInitialized) {
-                Log.d(TAG, "✅ Vuforia Engine initialized successfully");
-                
-                // 5. 初始化渲染系統
-                boolean renderingInitialized = initRenderingNative();
-                if (renderingInitialized) {
-                    Log.d(TAG, "✅ Vuforia rendering initialized successfully");
-                    vuforiaReady = true;
-                    notifyInitializationSuccess();
-                } else {
-                    Log.e(TAG, "❌ Failed to initialize Vuforia rendering");
-                    notifyInitializationFailed();
-                }
-            } else {
-                Log.e(TAG, "❌ Failed to initialize Vuforia Engine");
-                notifyInitializationFailed();
+            // ✅ 如果正在初始化，忽略重複調用
+            if (isInitializing) {
+                Log.w(TAG, "⚠️ Vuforia initialization already in progress, ignoring duplicate call");
+                return;
             }
             
-        } catch (Exception e) {
-            Log.e(TAG, "Exception during Vuforia setup", e);
-            notifyInitializationFailed();
+            // ✅ 中斷舊線程（如果存在）
+            if (currentInitThread != null && currentInitThread.isAlive()) {
+                Log.w(TAG, "🛑 Stopping previous initialization thread");
+                currentInitThread.interrupt();
+                try {
+                    currentInitThread.join(500);
+                } catch (InterruptedException e) {
+                    Log.w(TAG, "Interrupted while waiting for previous thread", e);
+                }
+            }
+            
+            // ✅ 標記開始初始化
+            isInitializing = true;
         }
+        
+        // ✅ 創建單一初始化線程
+        currentInitThread = new Thread(() -> {
+            Log.d(TAG, "🚀 Starting single Vuforia initialization thread...");
+            
+            final boolean[] success = {false};  // ✅ 使用 final 數組解決 lambda 問題
+            final int maxAttempts = 3;
+            
+            try {
+                for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                    // 檢查線程是否被中斷
+                    if (Thread.currentThread().isInterrupted()) {
+                        Log.w(TAG, "Thread interrupted, stopping initialization");
+                        break;
+                    }
+                    
+                    Log.d(TAG, "🔄 Vuforia初始化嘗試 " + attempt + "/" + maxAttempts);
+                    
+                    try {
+                        // 1. 加載原生庫
+                        if (!loadNativeLibrary()) {
+                            Log.e(TAG, "第" + attempt + "次嘗試：Failed to load native library");
+                            if (attempt < maxAttempts) {
+                                Thread.sleep(500);
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        // 2. 設置 Android 上下文
+                        Log.d(TAG, "第" + attempt + "次嘗試：Setting Android context...");
+                        setAndroidContextNative(context);
+                        
+                        // 3. 設置資源管理器
+                        Log.d(TAG, "第" + attempt + "次嘗試：Setting asset manager...");
+                        setAssetManagerNative(context.getAssets());
+                        
+                        // 4. 初始化 Vuforia Engine
+                        Log.d(TAG, "第" + attempt + "次嘗試：Initializing Vuforia Engine...");
+                        boolean vuforiaInitialized = initVuforiaEngineNative(getLicenseKey());
+                        
+                        if (vuforiaInitialized) {
+                            Log.d(TAG, "✅ 第" + attempt + "次嘗試：Vuforia Engine initialized successfully!");
+                            
+                            // 5. 初始化渲染系統
+                            boolean renderingInitialized = initRenderingNative();
+                            if (renderingInitialized) {
+                                Log.d(TAG, "✅ 第" + attempt + "次嘗試：Vuforia rendering initialized successfully!");
+                                
+                                // ✅ 標記為永久成功
+                                synchronized (initLock) {
+                                    vuforiaReady = true;
+                                    isInitialized = true;  // 這個永遠不會重置
+                                    success[0] = true;  // ✅ 使用數組方式
+                                }
+                                break;
+                            } else {
+                                Log.e(TAG, "⚠️ 第" + attempt + "次嘗試：Failed to initialize Vuforia rendering");
+                            }
+                        } else {
+                            Log.e(TAG, "⚠️ 第" + attempt + "次嘗試：Failed to initialize Vuforia Engine");
+                        }
+                        
+                        // 等待後重試
+                        if (attempt < maxAttempts && !Thread.currentThread().isInterrupted()) {
+                            int waitTime = 1000 * attempt;
+                            Log.d(TAG, "😴 等待 " + waitTime + "ms 後進行第" + (attempt + 1) + "次嘗試...");
+                            Thread.sleep(waitTime);
+                        }
+                        
+                    } catch (InterruptedException e) {
+                        Log.w(TAG, "Initialization thread interrupted", e);
+                        Thread.currentThread().interrupt();
+                        break;
+                    } catch (Exception e) {
+                        Log.e(TAG, "❌ 第" + attempt + "次嘗試出現異常: " + e.getMessage(), e);
+                        if (attempt < maxAttempts && !Thread.currentThread().isInterrupted()) {
+                            try {
+                                Thread.sleep(1000 * attempt);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                        }
+                    }
+                }
+            } finally {
+                // ✅ 釋放初始化鎖，但保持 isInitialized 狀態
+                synchronized (initLock) {
+                    isInitializing = false;
+                    if (currentInitThread == Thread.currentThread()) {
+                        currentInitThread = null;
+                    }
+                }
+            }
+            
+            // ✅ 通知結果
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                if (success[0]) {  // ✅ 使用數組方式讀取
+                    Log.d(TAG, "🎉 Vuforia permanently initialized! No more threads needed.");
+                    notifyInitializationSuccess();
+                } else {
+                    Log.e(TAG, "❌ Vuforia initialization failed after " + maxAttempts + " attempts");
+                    notifyInitializationFailed();
+                }
+            });
+            
+        }, "VuforiaInitThread");
+        
+        currentInitThread.start();
     }
-    
     // ✅ 提取許可證密鑰到單獨方法
     private String getLicenseKey() {
         return "AddD0sD/////AAABmb2xv80J2UAshKy68I6M8/chOh4Bd0UsKQeqMnCZenkh8Z9mPEun8HUhBzpsnjGETKQBX0Duvgp/m3k9GYnZks41tcRtaGnjXvwRW/t3zXQH1hAulR/AbMsXnoxHWBtHIE3YzDLnk5/MO30VXre2sz8ZBKtJCKsw4lA8UH1fwzO07aWsLkyGxBqDynU4sq509TAxqB2IdoGsW6kHpl6hz5RA8PzIE5UmUBIdM3/xjAAw/HJ9LJrP+i4KmkRXWHpYLD0bJhq66b78JfigD/zcm+bGK2TS1Klo6/6xkhHYCsd7LOcPmO0scdNVdNBrGugBgDps2n3YFyciQbFPYrGk4rW7u8EPlpABJIDbr0dVTv3W";
@@ -347,6 +447,19 @@ public class VuforiaCoreManager {
             return false;
         }
     }
+    public void forceResetForTesting() {
+        synchronized (initLock) {
+            Log.w(TAG, "🔄 Force resetting Vuforia state (testing only)");
+            isInitialized = false;
+            isInitializing = false;
+            vuforiaReady = false;
+            
+            if (currentInitThread != null && currentInitThread.isAlive()) {
+                currentInitThread.interrupt();
+                currentInitThread = null;
+            }
+        }
+    }
     
     /**
      * ✅ 修正後的目標檢測啟動方法
@@ -500,7 +613,9 @@ public class VuforiaCoreManager {
     
     // ==================== 狀態檢查方法 ====================
     public boolean isVuforiaInitialized() {
-        return vuforiaReady;
+        synchronized (initLock) {
+            return isInitialized;  // 使用新的靜態標記
+        }
     }
     
     public boolean isModelLoaded() {
