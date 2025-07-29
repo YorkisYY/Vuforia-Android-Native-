@@ -61,10 +61,13 @@ android {
         noCompress("glb", "gltf", "bin")
     }
     
-    // 確保 Filament 庫正確載入
-    packagingOptions {
-        pickFirst("**/libfilament-jni.so")
-        pickFirst("**/libgltfio-jni.so")
+    // 🔧 修正：使用 Gradle 8+ 語法，確保 Filament 庫被包含
+    packaging {
+        jniLibs {
+            pickFirsts.add("**/libfilament-jni.so")
+            pickFirsts.add("**/libgltfio-jni.so")
+            pickFirsts.add("**/libc++_shared.so")
+        }
     }
 }
 
@@ -73,13 +76,7 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     
-    // ========== Vuforia 標準依賴 ==========
-    // 暫時移除 Vuforia.jar 依賴，因為我們主要使用 Filament 進行渲染
-    // implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
-    // implementation(files("src/main/libs/Vuforia.jar")) // 標準 Vuforia.jar
-    
     // ========== Filament 3D 渲染引擎 (GLB 支援) ==========
-    // 使用更穩定的版本
     implementation("com.google.android.filament:filament-android:1.31.0")
     implementation("com.google.android.filament:filament-utils-android:1.31.0")
     implementation("com.google.android.filament:gltfio-android:1.31.0")
@@ -88,11 +85,4 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    
-    // ✅ 新增：CameraX 依赖
-    val cameraxVersion = "1.3.1"
-    implementation("androidx.camera:camera-core:${cameraxVersion}")
-    implementation("androidx.camera:camera-camera2:${cameraxVersion}")
-    implementation("androidx.camera:camera-lifecycle:${cameraxVersion}")
-    implementation("androidx.camera:camera-view:${cameraxVersion}")
 }

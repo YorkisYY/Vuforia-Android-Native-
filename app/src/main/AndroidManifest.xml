@@ -7,10 +7,28 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     
+    <!-- Vuforia 11.3.4 必需權限 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+    
+    <!-- 🆕 媒體權限 (Android 13+ / API 33+) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    
+    <!-- 🆕 向下兼容權限 (Android 12 及以下) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="32" />
+    
     <!-- Camera hardware requirement -->
     <uses-feature
         android:name="android.hardware.camera"
         android:required="true" />
+    
+    <!-- 相機自動對焦支援 -->
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
     
     <!-- OpenGL ES 2.0 requirement for Vuforia -->
     <uses-feature
@@ -34,7 +52,9 @@
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.IBMAIWEATHERARTANDROID"
-            android:configChanges="orientation|screenSize|keyboardHidden">
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:screenOrientation="portrait"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
