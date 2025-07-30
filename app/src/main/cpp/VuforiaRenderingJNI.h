@@ -1,151 +1,128 @@
-#ifndef VUFORIA_RENDERING_JNI_H
-#define VUFORIA_RENDERING_JNI_H
-//C:\Users\USER\Desktop\IBM-WEATHER-ART-ANDRIOD\app\src\main\cpp\VuforiaRenderingJNI.h
-// ==================== 标准依赖 ====================
-#include <jni.h>
-#include <android/log.h>
+// ==================== 在 VuforiaEngineWrapper 类的 private 部分添加 ====================
 
-// ==================== 日志宏 ====================
-#ifndef LOG_TAG
-#define LOG_TAG "VuforiaRenderingJNI"
-#endif
+private:
+    // ===== 现有的 private 成员保持不变 =====
+    // ... 您现有的所有 private 成员 ...
+    
+    // ===== 新增的渲染相关私有成员变量 =====
+    
+    // 渲染资源管理
+    mutable std::mutex mRenderMutex;
+    bool mRenderInitialized;
+    GLuint mVideoBackgroundShaderProgram;
+    GLuint mVideoBackgroundVAO;
+    GLuint mVideoBackgroundVBO;
+    GLuint mVideoBackgroundTextureId;
+    
+    // 性能监控
+    mutable std::mutex mPerformanceMutex;
+    std::chrono::steady_clock::time_point mLastFrameTime;
+    float mCurrentFPS;
+    long mTotalFrameCount;
+    
+    // 渲染配置
+    VuRenderConfig mRenderConfig;
+    bool mVideoBackgroundRenderingEnabled;
+    int mRenderingQuality;
+    
+    // OpenGL状态保存
+    struct OpenGLState {
+        GLboolean depthTestEnabled;
+        GLboolean cullFaceEnabled;
+        GLboolean blendEnabled;
+        GLenum blendSrcFactor;
+        GLenum blendDstFactor;
+        GLuint currentProgram;
+        GLuint currentTexture;
+    } mSavedGLState;
 
-#define LOGI_RENDER(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-#define LOGE_RENDER(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-#define LOGD_RENDER(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define LOGW_RENDER(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
+// ==================== 在 VuforiaEngineWrapper 类的 public 部分添加 ====================
 
-// ==================== JNI方法声明 ====================
-#ifdef __cplusplus
-extern "C" {
-#endif
+public:
+    // ===== 您现有的所有 public 方法保持不变 =====
+    // ... 现有方法 ...
+    
+    // ===== 新增的渲染相关公开方法 =====
+    
+    // OpenGL资源管理
+    bool initializeOpenGLResources();
+    void cleanupOpenGLResources();
+    bool isOpenGLInitialized() const;
+    bool validateOpenGLSetup() const;
+    std::string getOpenGLInfo() const;
+    
+    // 视频背景渲染
+    bool setupVideoBackgroundRendering();
+    void renderFrameWithVideoBackground(JNIEnv* env);
+    bool createVideoBackgroundShader();
+    bool setupVideoBackgroundTexture();
+    void renderVideoBackgroundWithProperShader(const VuRenderState& renderState);
+    
+    // 调试和诊断
+    void debugCurrentRenderState();
+    std::string getRenderingStatusDetail() const;
+    
+    // 性能监控
+    float getCurrentRenderingFPS() const;
+    long getTotalFrameCount() const;
+    
+    // 渲染配置
+    void setVideoBackgroundRenderingEnabled(bool enabled);
+    void setRenderingQuality(int quality);
+    void onSurfaceChanged(int width, int height);
+    
+    // OpenGL状态管理
+    void saveOpenGLState();
+    void restoreOpenGLState();
+    void updateRenderConfig();
 
-// ==================== 渲染循环控制 ====================
-/**
- * 停止渲染循环 - 解决编译错误的关键方法
- */
-JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_stopRenderingLoopNative(
-    JNIEnv* env, jobject thiz);
+// ==================== 在 VuforiaEngineWrapper 类的 private 部分添加新的私有方法 ====================
 
-/**
- * 启动渲染循环
- */
-JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_startRenderingLoopNative(
-    JNIEnv* env, jobject thiz);
+private:
+    // ===== 您现有的所有 private 方法保持不变 =====
+    // ... 现有的私有方法 ...
+    
+    // ===== 新增的渲染相关私有方法 =====
+    
+    // 性能统计更新
+    void updatePerformanceStats();
+    
+    // 渲染状态调试
+    void debugRenderState(const VuRenderState& renderState) const;
 
-/**
- * 检查渲染循环是否活跃
- */
-JNIEXPORT jboolean JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_isRenderingActiveNative(
-    JNIEnv* env, jobject thiz);
+// ==================== 需要修改的构造函数初始化列表 ====================
 
-// ==================== 相机控制 ====================
-/**
- * 启动相机
- */
-JNIEXPORT jboolean JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_startCameraNative(
-    JNIEnv* env, jobject thiz);
-
-/**
- * 停止相机
- */
-JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_stopCameraNative(
-    JNIEnv* env, jobject thiz);
-
-/**
- * 检查相机是否活跃
- */
-JNIEXPORT jboolean JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_isCameraActiveNative(
-    JNIEnv* env, jobject thiz);
-
-// ==================== Surface管理 ====================
-/**
- * 设置渲染Surface
- */
-JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_setSurfaceNative(
-    JNIEnv* env, jobject thiz, jobject surface);
-
-/**
- * Surface创建回调
- */
-JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_onSurfaceCreatedNative(
-    JNIEnv* env, jobject thiz, jint width, jint height);
-
-/**
- * Surface销毁回调
- */
-JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_onSurfaceDestroyedNative(
-    JNIEnv* env, jobject thiz);
-
-// ==================== 引擎状态查询 ====================
-/**
- * 检查Vuforia引擎是否运行
- */
-JNIEXPORT jboolean JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_isVuforiaEngineRunningNative(
-    JNIEnv* env, jobject thiz);
-
-// ==================== 诊断和调试 ====================
-/**
- * 获取详细的引擎状态
- */
-JNIEXPORT jstring JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_getEngineStatusDetailNative(
-    JNIEnv* env, jobject thiz);
-
-/**
- * 获取内存使用情况
- */
-JNIEXPORT jstring JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_getMemoryUsageNative(
-    JNIEnv* env, jobject thiz);
-
-// ==================== 安全的图像追踪控制 ====================
-/**
- * 安全地停止图像追踪
- */
-JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_stopImageTrackingNativeSafe(
-    JNIEnv* env, jobject thiz);
-// ==================== 引擎生命周期控制 ====================
-/**
- * 暂停Vuforia引擎 - 修复缺少的JNI函数
- */
-JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_pauseVuforiaEngineNative(
-    JNIEnv* env, jobject thiz);
-
-/**
- * 恢复Vuforia引擎
- */
-JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_resumeVuforiaEngineNative(
-    JNIEnv* env, jobject thiz);
-
-/**
- * 启动Vuforia引擎 - 解决引擎不启动的问题
- */
-JNIEXPORT jboolean JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_startVuforiaEngineNative(
-    JNIEnv* env, jobject thiz);
-
-/**
- * 停止Vuforia引擎
- */
-JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_stopVuforiaEngineNative(
-    JNIEnv* env, jobject thiz);
-#ifdef __cplusplus
+// 在您的 VuforiaEngineWrapper 构造函数中，需要添加这些新成员的初始化：
+/*
+VuforiaEngineWrapper::VuforiaEngineWrapper() 
+    : // ... 您现有的初始化列表 ...
+    , mRenderInitialized(false)
+    , mVideoBackgroundShaderProgram(0)
+    , mVideoBackgroundVAO(0)
+    , mVideoBackgroundVBO(0)
+    , mVideoBackgroundTextureId(0)
+    , mCurrentFPS(0.0f)
+    , mTotalFrameCount(0)
+    , mVideoBackgroundRenderingEnabled(true)
+    , mRenderingQuality(1) // 默认中等质量
+{
+    // 您现有的构造函数代码...
+    
+    // 初始化性能统计
+    mLastFrameTime = std::chrono::steady_clock::now();
+    
+    // 初始化OpenGL状态结构
+    memset(&mSavedGLState, 0, sizeof(mSavedGLState));
+    
+    LOGI("VuforiaEngineWrapper created with enhanced rendering support");
 }
-#endif
+*/
 
-#endif // VUFORIA_RENDERING_JNI_H
+// ==================== 需要在头文件顶部添加的包含 ====================
+
+// 在您的 #include 列表中添加（如果还没有的话）：
+/*
+#include <GLES3/gl3.h>       // OpenGL ES 3.0
+#include <GLES2/gl2ext.h>    // OpenGL扩展
+#include <iomanip>           // 用于 std::setprecision
+*/

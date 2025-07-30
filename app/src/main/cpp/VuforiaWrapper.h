@@ -16,7 +16,10 @@
 #include <unordered_map>
 #include <cstring>  // 添加 memset 支持
 #include <sstream>  // 添加 stringstream 支持
+#include <iomanip>  // 用于 std::setprecision
 #include <GLES2/gl2.h>
+#include <GLES3/gl3.h>       // OpenGL ES 3.0
+#include <GLES2/gl2ext.h>    // OpenGL扩展
 #include <EGL/egl.h>
 
 // ==================== Vuforia Engine 11 核心頭文件 ====================
@@ -175,7 +178,7 @@ namespace VuforiaWrapper {
         
         // 獲取隊列大小
         size_t getEventCount() const;
-    void renderVideoBackgroundMesh(const VuRenderState& renderState);    
+        
     private:
         // 檢查事件是否需要觸發（避免重複事件）
         bool shouldTriggerEvent(const std::string& targetName, TargetEventType eventType);
@@ -262,11 +265,41 @@ namespace VuforiaWrapper {
         bool mCameraPermissionGranted;
         bool mCameraHardwareSupported;
         
+        // ===== 新增的渲染相关私有成员变量 =====
+        
+        // 渲染资源管理
+        mutable std::mutex mRenderMutex;
+        bool mRenderInitialized;
+        GLuint mVideoBackgroundShaderProgram;
+        GLuint mVideoBackgroundVAO;
+        GLuint mVideoBackgroundVBO;
+        GLuint mVideoBackgroundTextureId;
+        
+        // 性能监控
+        mutable std::mutex mPerformanceMutex;
+        std::chrono::steady_clock::time_point mLastFrameTime;
+        float mCurrentFPS;
+        long mTotalFrameCount;
+        
+        // 渲染配置
+        VuRenderConfig mRenderConfig;
+        bool mVideoBackgroundRenderingEnabled;
+        int mRenderingQuality;
+        
+        // OpenGL状态保存
+        struct OpenGLState {
+            GLboolean depthTestEnabled;
+            GLboolean cullFaceEnabled;
+            GLboolean blendEnabled;
+            GLenum blendSrcFactor;
+            GLenum blendDstFactor;
+            GLuint currentProgram;
+            GLuint currentTexture;
+        } mSavedGLState;
+        
         // 同步對象
         mutable std::mutex mEngineMutex;
-    private:
-    void renderCameraBackgroundSimple(const VuState* state);    
-    void renderVideoBackgroundWithTexture(const VuRenderState& renderState);
+        
     public:
         VuforiaEngineWrapper();
         ~VuforiaEngineWrapper();
@@ -445,6 +478,41 @@ namespace VuforiaWrapper {
          */
         std::string getPermissionErrorDetail() const;
         
+        // ===== 新增的渲染相关公开方法 =====
+        
+        // OpenGL资源管理
+        bool initializeOpenGLResources();
+        void cleanupOpenGLResources();
+        bool isOpenGLInitialized() const;
+        bool validateOpenGLSetup() const;
+        std::string getOpenGLInfo() const;
+        
+        // 视频背景渲染
+        bool setupVideoBackgroundRendering();
+        void renderFrameWithVideoBackground(JNIEnv* env);
+        bool createVideoBackgroundShader();
+        bool setupVideoBackgroundTexture();
+        void renderVideoBackgroundWithProperShader(const VuRenderState& renderState);
+        void renderVideoBackgroundWithTexture(const VuRenderState& renderState);  // 保留原有方法
+        
+        // 调试和诊断
+        void debugCurrentRenderState();
+        std::string getRenderingStatusDetail() const;
+        
+        // 性能监控
+        float getCurrentRenderingFPS() const;
+        long getTotalFrameCount() const;
+        
+        // 渲染配置
+        void setVideoBackgroundRenderingEnabled(bool enabled);
+        void setRenderingQuality(int quality);
+        void onSurfaceChanged(int width, int height);
+        
+        // OpenGL状态管理
+        void saveOpenGLState();
+        void restoreOpenGLState();
+        void updateRenderConfig();
+        
     private:
         // ==================== 內部初始化方法 ====================
         bool createEngineConfig(VuEngineConfigSet** configSet, const std::string& licenseKey);
@@ -478,6 +546,18 @@ namespace VuforiaWrapper {
          * 更新相機權限狀態
          */
         void updateCameraPermissionStatus();
+        
+        // ===== 新增的渲染相关私有方法 =====
+        
+        // 渲染相关私有方法
+        void renderCameraBackgroundSimple(const VuState* state);
+        void renderVideoBackgroundMesh(const VuRenderState& renderState);
+        
+        // 性能统计更新
+        void updatePerformanceStats();
+        
+        // 渲染状态调试
+        void debugRenderState(const VuRenderState& renderState) const;
     };
 }
 
@@ -538,7 +618,7 @@ namespace VuforiaWrapper {
     
     // ==================== Vuforia Engine 生命周期函数 ====================
     /**
-     * 初始化 Vuforia Engine
+     * 恢复 Vuforia Engine
      * @param env JNI环境
      * @param thiz Java对象
      */
@@ -563,11 +643,18 @@ namespace VuforiaWrapper {
     extern "C" JNIEXPORT void JNICALL
     Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_deinitVuforiaEngineNative(
         JNIEnv* env, jobject thiz);
-    // 保留這個聲明：
-    extern "C" JNIEXPORT jboolean JNICALL  // 注意：返回 jboolean，不是 void
+        
+    /**
+     * 初始化 Vuforia Engine
+     * @param env JNI环境
+     * @param thiz Java对象
+     * @param license_key 许可证密钥
+     * @return 成功返回JNI_TRUE，失败返回JNI_FALSE
+     */
+    extern "C" JNIEXPORT jboolean JNICALL
     Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_initVuforiaEngineNative(
-        JNIEnv* env, jobject thiz, jstring license_key);  // 注意：有 license_key 參數
-    }
+        JNIEnv* env, jobject thiz, jstring license_key);
+}
 
 // ==================== 單例訪問器 ====================
 namespace VuforiaWrapper {
