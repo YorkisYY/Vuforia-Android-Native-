@@ -1,5 +1,6 @@
 #ifndef VUFORIA_WRAPPER_H
 #define VUFORIA_WRAPPER_H
+//C:\Users\USER\Desktop\IBM-WEATHER-ART-ANDRIOD\app\src\main\cpp\VuforiaWrapper.h
 
 // ==================== 標準庫和系統依賴 ====================
 #include <jni.h>
@@ -14,6 +15,7 @@
 #include <chrono>
 #include <unordered_map>
 #include <cstring>  // 添加 memset 支持
+#include <sstream>  // 添加 stringstream 支持
 #include <GLES2/gl2.h>
 #include <EGL/egl.h>
 
@@ -26,6 +28,15 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
+
+// ==================== ✅ 全域變數聲明（不是定義！）====================
+// 這些實際定義在 vuforia_wrapper.cpp 中
+extern jobject gAndroidContext;
+extern JavaVM* gJavaVM;
+
+// ==================== ✅ 函數聲明（不是定義！）====================
+// 錯誤處理回調函數聲明
+void errorCallback(const char* message, void* clientData);
 
 // ==================== 錯誤處理宏 ====================
 #define CHECK_VU_RESULT(result, operation) \
@@ -164,7 +175,7 @@ namespace VuforiaWrapper {
         
         // 獲取隊列大小
         size_t getEventCount() const;
-        
+    void renderVideoBackgroundMesh(const VuRenderState& renderState);    
     private:
         // 檢查事件是否需要觸發（避免重複事件）
         bool shouldTriggerEvent(const std::string& targetName, TargetEventType eventType);
@@ -235,9 +246,27 @@ namespace VuforiaWrapper {
         JavaVM* mJVM;
         jobject mTargetCallback;
         
+        // ✅ 新增的成員變數 - 渲染循環狀態
+        bool mRenderingLoopActive;
+        
+        // ✅ Surface相關狀態
+        void* mCurrentSurface;
+        int mSurfaceWidth;
+        int mSurfaceHeight;
+        bool mSurfaceReady;
+        
+        // ✅ 相機狀態
+        bool mCameraActive;
+        
+        // ✅ 相機權限狀態
+        bool mCameraPermissionGranted;
+        bool mCameraHardwareSupported;
+        
         // 同步對象
         mutable std::mutex mEngineMutex;
-        
+    private:
+    void renderCameraBackgroundSimple(const VuState* state);    
+    void renderVideoBackgroundWithTexture(const VuRenderState& renderState);
     public:
         VuforiaEngineWrapper();
         ~VuforiaEngineWrapper();
@@ -306,6 +335,116 @@ namespace VuforiaWrapper {
         std::string getVuforiaVersion() const;
         int getVuforiaStatus() const;
         
+        // ==================== 渲染循环控制方法（解决编译错误的关键）====================
+        /**
+         * 启动渲染循环
+         * @return 成功返回true，失败返回false
+         */
+        bool startRenderingLoop();
+        
+        /**
+         * 停止渲染循环 - 解决编译错误的核心方法
+         */
+        void stopRenderingLoop();
+        
+        /**
+         * 检查渲染循环是否活跃
+         * @return 活跃返回true，否则返回false
+         */
+        bool isRenderingLoopActive() const;
+
+        // ==================== 相机生命周期管理 ====================
+        /**
+         * 检查相机是否活跃
+         * @return 相机活跃返回true，否则返回false
+         */
+        bool isCameraActive() const;
+
+        // ==================== Surface 管理方法 ====================
+        /**
+         * 设置渲染Surface
+         * @param surface Android Surface对象指针
+         */
+        void setRenderingSurface(void* surface);
+        
+        /**
+         * 处理Surface创建事件
+         * @param width Surface宽度
+         * @param height Surface高度
+         */
+        void onSurfaceCreated(int width, int height);
+        
+        /**
+         * 处理Surface销毁事件
+         */
+        void onSurfaceDestroyed();
+
+        // ==================== 扩展的状态查询方法 ====================
+        /**
+         * 获取详细的引擎状态信息
+         * @return 状态描述字符串
+         */
+        std::string getEngineStatusDetail() const;
+        
+        /**
+         * 获取内存使用情况
+         * @return 内存使用情况描述
+         */
+        std::string getMemoryUsageInfo() const;
+        
+        /**
+         * 检查引擎是否正在运行
+         * @return 运行中返回true，否则返回false
+         */
+        bool isEngineRunning() const;
+
+        // ==================== 安全的图像追踪控制 ====================
+        /**
+         * 安全地停止图像追踪
+         * 使用更稳定的方式停止追踪，避免潜在的崩溃
+         */
+        void stopImageTrackingSafe();
+
+        // ==================== ✅ 相机权限检查方法 ====================
+        /**
+         * 检查相机权限状态
+         * 适用于 Vuforia 11.3.4 的权限检查
+         * @return 有权限返回true，否则返回false
+         */
+        bool checkCameraPermission() const;
+        
+        /**
+         * 检查相机是否可访问
+         * 验证相机硬件是否可用且引擎状态正常
+         * @return 相机可访问返回true，否则返回false
+         */
+        bool isCameraAccessible() const;
+        
+        /**
+         * 获取相机权限详细状态
+         * @return 权限状态描述字符串
+         */
+        std::string getCameraPermissionStatus() const;
+        
+        /**
+         * 验证相机硬件支持
+         * 检查设备是否支持所需的相机功能
+         * @return 支持返回true，否则返回false
+         */
+        bool verifyCameraHardwareSupport() const;
+
+        /**
+         * 驗證 Vuforia 權限配置
+         * @return 配置正確返回true，否則返回false
+         */
+        bool validateVuforiaPermissions() const;
+        
+        /**
+         * 獲取權限錯誤詳細信息
+         * @return 錯誤詳細描述字符串
+         */
+        std::string getPermissionErrorDetail() const;
+        
     private:
         // ==================== 內部初始化方法 ====================
         bool createEngineConfig(VuEngineConfigSet** configSet, const std::string& licenseKey);
@@ -326,8 +465,19 @@ namespace VuforiaWrapper {
         // ==================== 工具函數 ====================
         bool checkVuResult(VuResult result, const char* operation) const;
         std::vector<uint8_t> readAssetFile(const std::string& filename) const;
-        // 移除有問題的函數聲明
-        // VuObservationStatus mapTargetStatus(VuObservationStatus status) const;
+        
+        // ==================== ✅ 相机权限预检查方法 ====================
+        /**
+         * 预先检查相机权限
+         * 在引擎初始化前验证相机权限状态
+         * @return 有权限返回true，否则返回false
+         */
+        bool preCheckCameraPermission();
+        
+        /**
+         * 更新相機權限狀態
+         */
+        void updateCameraPermissionStatus();
     };
 }
 
@@ -343,7 +493,81 @@ namespace VuforiaWrapper {
     // 錯誤碼轉換
     std::string vuResultToString(VuResult result);
     std::string vuEngineCreationErrorToString(VuEngineCreationError error);
-}
+    
+    // ==================== ✅ 相机权限检查函数 ====================
+    /**
+     * 全局相机权限检查函数 - 适用于 Vuforia 11.3.4
+     * @param env JNI环境
+     * @param thiz Java对象
+     * @return 有权限返回JNI_TRUE，否则返回JNI_FALSE
+     */
+    extern "C" JNIEXPORT jboolean JNICALL
+    Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_checkCameraPermissionNative(
+        JNIEnv* env, jobject thiz);
+    
+    /**
+     * 检查相机是否可访问
+     * @param env JNI环境
+     * @param thiz Java对象
+     * @return 相机可访问返回JNI_TRUE，否则返回JNI_FALSE
+     */
+    extern "C" JNIEXPORT jboolean JNICALL
+    Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_isCameraAccessible(
+        JNIEnv* env, jobject thiz);
+    
+    /**
+     * 驗證 Vuforia 初始化狀態與權限
+     */
+    extern "C" JNIEXPORT jboolean JNICALL
+    Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_validateVuforiaPermissionsNative(
+        JNIEnv* env, jobject thiz);
+    
+    /**
+     * 獲取權限錯誤詳細信息
+     */
+    extern "C" JNIEXPORT jstring JNICALL
+    Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_getPermissionErrorDetailNative(
+        JNIEnv* env, jobject thiz);
+
+    /**
+     * 獲取相機權限狀態詳細信息
+     */
+    extern "C" JNIEXPORT jstring JNICALL
+    Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_getCameraPermissionStatusNative(
+        JNIEnv* env, jobject thiz);
+    
+    // ==================== Vuforia Engine 生命周期函数 ====================
+    /**
+     * 初始化 Vuforia Engine
+     * @param env JNI环境
+     * @param thiz Java对象
+     */
+    extern "C" JNIEXPORT void JNICALL
+    Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_resumeVuforiaEngineNative(
+        JNIEnv* env, jobject thiz);
+    
+    /**
+     * 暂停 Vuforia Engine
+     * @param env JNI环境
+     * @param thiz Java对象
+     */
+    extern "C" JNIEXPORT void JNICALL
+    Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_pauseVuforiaEngineNative(
+        JNIEnv* env, jobject thiz);
+    
+    /**
+     * 清理 Vuforia Engine
+     * @param env JNI环境
+     * @param thiz Java对象
+     */
+    extern "C" JNIEXPORT void JNICALL
+    Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_deinitVuforiaEngineNative(
+        JNIEnv* env, jobject thiz);
+    // 保留這個聲明：
+    extern "C" JNIEXPORT jboolean JNICALL  // 注意：返回 jboolean，不是 void
+    Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_initVuforiaEngineNative(
+        JNIEnv* env, jobject thiz, jstring license_key);  // 注意：有 license_key 參數
+    }
 
 // ==================== 單例訪問器 ====================
 namespace VuforiaWrapper {

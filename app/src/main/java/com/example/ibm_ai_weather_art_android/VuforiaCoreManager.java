@@ -3,6 +3,13 @@ package com.example.ibm_ai_weather_art_android;
 import android.content.Context;
 import android.util.Log;
 import java.io.InputStream;
+import android.os.Handler;
+import android.view.Surface;
+import android.view.SurfaceView;
+import android.view.SurfaceHolder;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import androidx.core.content.ContextCompat;
 
 /**
  * Vuforia 核心管理器
@@ -21,6 +28,10 @@ public class VuforiaCoreManager {
     private boolean modelLoaded = false;
     private static boolean gTargetDetectionActive = false;
     private boolean vuforiaReady = false;
+    
+    // 🔧 添加：渲染相關變量
+    private Thread renderingThread;
+    private volatile boolean isRenderingActive = false;
     
     // 回調接口
     public interface TargetDetectionCallback {
@@ -74,6 +85,8 @@ public class VuforiaCoreManager {
     private native void stopRenderingNative();
     private native void cleanupRenderingNative();
     
+
+    
     // 目標檢測和追蹤
     private native boolean initImageTargetDatabaseNative();
     private native boolean loadImageTargetsNative(String databasePath);
@@ -101,6 +114,107 @@ public class VuforiaCoreManager {
     
     // 清理
     private native void cleanupNative();
+    
+    // 🔧 添加：渲染循環
+    private native void renderFrameNative();
+    
+    // ==================== 渲染循环控制 - 解决编译错误的关键 ====================
+    private native void stopRenderingLoopNative();
+    private native void startRenderingLoopNative();
+    private native boolean isRenderingActiveNative();
+    
+    // ==================== 相机和状态查询 ====================
+    private native boolean isCameraActiveNative();
+    
+    // ==================== Surface管理 ====================
+    private native void setSurfaceNative(Object surface);
+    private native void onSurfaceCreatedNative(int width, int height);
+    private native void onSurfaceDestroyedNative();
+    
+    // ==================== 诊断方法 ====================
+    private native String getEngineStatusDetailNative();
+    private native String getMemoryUsageNative();
+    
+    // ==================== 相机权限检查方法 ====================
+    private boolean mPermissionChecked = false;
+    
+    /**
+     * 初始化前的权限检查 - 配合 C++ preCheckCameraPermission()
+     */
+    public boolean checkCameraPermissionBeforeInit() {
+        if (context == null) {
+            Log.e(TAG, "Context not set before permission check");
+            return false;
+        }
+        boolean hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) 
+            == PackageManager.PERMISSION_GRANTED;
+        Log.i(TAG, "Camera permission status: " + (hasPermission ? "GRANTED" : "DENIED"));
+        mPermissionChecked = true;
+        return hasPermission;
+    }
+    
+    /**
+     * 完整的 Vuforia 初始化流程 - 包含权限检查
+     */
+    public boolean initializeVuforiaWithPermissionCheck(String licenseKey) {
+        Log.i(TAG, "Starting Vuforia initialization with permission check...");
+        
+        // 1. 检查 Context 是否设置
+        if (context == null) {
+            Log.e(TAG, "Context must be set before initialization");
+            return false;
+        }
+        
+        // 2. 检查相机权限
+        if (!checkCameraPermissionBeforeInit()) {
+            Log.e(TAG, "Camera permission not granted - cannot initialize Vuforia");
+            return false;
+        }
+        
+        // 3. 设置 Android Context（必须在引擎创建前）
+        setAndroidContextNative(context);
+        
+        // 4. 初始化 Vuforia Engine
+        boolean success = initVuforiaEngineNative(licenseKey);
+        if (success) {
+            Log.i(TAG, "✅ Vuforia initialized successfully with camera permission");
+            return true;
+        } else {
+            Log.e(TAG, "❌ Vuforia initialization failed");
+            return false;
+        }
+    }
+    
+    /**
+     * 检查当前权限状态
+     */
+    public boolean isPermissionGranted() {
+        if (context == null) return false;
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) 
+            == PackageManager.PERMISSION_GRANTED;
+    }
+    
+    /**
+     * 启动相机前的安全检查
+     */
+    public boolean startCameraWithPermissionCheck() {
+        Log.i(TAG, "Starting camera with permission check...");
+        
+        // 双重检查权限
+        if (!isPermissionGranted()) {
+            Log.e(TAG, "Camera permission lost - cannot start camera");
+            return false;
+        }
+        
+        // 检查 Vuforia 引擎状态
+        if (!isVuforiaEngineRunningNative()) {
+            Log.e(TAG, "Vuforia engine not running - cannot start camera");
+            return false;
+        }
+        
+        // 调用 C++ 方法启动相机
+        return startCameraNative();
+    }
     
     // ==================== 初始化方法 ====================
     public void setupVuforia() {
@@ -164,15 +278,27 @@ public class VuforiaCoreManager {
                             }
                         }
                         
-                        // 2. 設置 Android 上下文
+                        // 2. 檢查相機權限
+                        Log.d(TAG, "第" + attempt + "次嘗試：Checking camera permission...");
+                        if (!checkCameraPermissionBeforeInit()) {
+                            Log.e(TAG, "第" + attempt + "次嘗試：Camera permission not granted");
+                            if (attempt < maxAttempts) {
+                                Thread.sleep(500);
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        // 3. 設置 Android 上下文
                         Log.d(TAG, "第" + attempt + "次嘗試：Setting Android context...");
                         setAndroidContextNative(context);
                         
-                        // 3. 設置資源管理器
+                        // 4. 設置資源管理器
                         Log.d(TAG, "第" + attempt + "次嘗試：Setting asset manager...");
                         setAssetManagerNative(context.getAssets());
                         
-                        // 4. 初始化 Vuforia Engine
+                        // 5. 初始化 Vuforia Engine
                         Log.d(TAG, "第" + attempt + "次嘗試：Initializing Vuforia Engine...");
                         boolean vuforiaInitialized = initVuforiaEngineNative(getLicenseKey());
                         
@@ -290,6 +416,10 @@ public class VuforiaCoreManager {
      */
     public void pauseVuforia() {
         Log.d(TAG, "Pausing Vuforia Engine (Official Standard)");
+        
+        // 🔧 添加：停止渲染循環
+        stopRenderingLoop();
+        
         try {
             pauseVuforiaEngineNative();  // 調用官方推薦的暫停方法
             gTargetDetectionActive = false;
@@ -313,6 +443,10 @@ public class VuforiaCoreManager {
             resumeVuforiaEngineNative();  // 調用官方推薦的恢復方法
             gTargetDetectionActive = true;
             Log.d(TAG, "Vuforia resumed successfully");
+            
+            // 🔧 添加：如果Surface已經準備好，重新啟動渲染
+            // 這會在 surfaceCreated 回調中自動處理
+            
         } catch (UnsatisfiedLinkError e) {
             Log.w(TAG, "Native resume method not available: " + e.getMessage());
             gTargetDetectionActive = true;  // 至少設置狀態
@@ -576,13 +710,70 @@ public class VuforiaCoreManager {
     public boolean startVuforiaEngine() {
         Log.d(TAG, "Starting Vuforia Engine...");
         try {
-            return startVuforiaEngineNative();
+            if (!isVuforiaInitialized()) {
+                Log.e(TAG, "Cannot start engine - Vuforia not initialized");
+                return false;
+            }
+            
+            // ✅ 調用正確的 native 方法
+            boolean engineStarted = startVuforiaEngineNative();
+            
+            if (engineStarted) {
+                Log.d(TAG, "✅ Vuforia Engine started successfully");
+                return true;
+            } else {
+                Log.e(TAG, "❌ Failed to start Vuforia Engine");
+                return false;
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error starting Vuforia Engine", e);
             return false;
         }
     }
+    // 🔧 添加：简单的渲染循环
+    private void startSimpleRenderingLoop() {
+        if (renderingThread != null) return;
+        
+        renderingThread = new Thread(() -> {
+            while (isVuforiaRunning()) {
+                try {
+                    // 🎯 只调用这一个方法，Vuforia 会自动显示相机
+                    renderFrameNative();
+                    Thread.sleep(16); // 60 FPS
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Exception e) {
+                    Log.e(TAG, "Rendering error", e);
+                }
+            }
+        });
+        renderingThread.start();
+    }
     
+    private boolean isVuforiaRunning() {
+        return isVuforiaInitialized() && isRenderingActive;
+    }
+    
+    private void startContinuousRendering() {
+        Log.d(TAG, "Starting continuous rendering...");
+        
+        setupCameraBackgroundNative();
+        
+        // ⭐ 測試：手動啟動一次渲染循環
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                for (int i = 0; i < 10; i++) {
+                    renderFrameNative();
+                    Thread.sleep(50);
+                }
+                Log.d(TAG, "📷 Manual render frames completed");
+            } catch (Exception e) {
+                Log.e(TAG, "Manual render failed: " + e.getMessage());
+            }
+        }, 1000);
+        
+        Log.d(TAG, "✅ Rendering system ready (stopped infinite loop)");
+    }
     public void stopVuforiaEngine() {
         Log.d(TAG, "Stopping Vuforia Engine...");
         try {
@@ -665,6 +856,9 @@ public class VuforiaCoreManager {
     public void cleanupManager() {
         Log.d(TAG, "Cleaning up VuforiaCoreManager");
         
+        // 🔧 添加：停止渲染循環
+        stopRenderingLoop();
+        
         // ✅ 安全的停止方式：直接設置狀態，不調用可能有問題的方法
         gTargetDetectionActive = false;
         
@@ -687,4 +881,86 @@ public class VuforiaCoreManager {
             Log.e(TAG, "Error during cleanup", e);
         }
     }
+    
+    // ==================== 🔧 新增：Surface 管理 ====================
+    
+    /**
+     * 🔧 修复：停止渲染循环 - 解决编译错误的核心方法
+     */
+    private void stopRenderingLoop() {
+        Log.d(TAG, "🛑 Stopping rendering loop...");
+        try {
+            // 调用native方法停止渲染循环
+            stopRenderingLoopNative();
+            isRenderingActive = false;
+            // 中断Java层的渲染线程（如果存在）
+            if (renderingThread != null && renderingThread.isAlive()) {
+                renderingThread.interrupt();
+                try {
+                    renderingThread.join(1000); // 等待最多1秒
+                } catch (InterruptedException e) {
+                    Log.w(TAG, "Interrupted while stopping rendering thread", e);
+                }
+                renderingThread = null;
+            }
+            Log.d(TAG, "✅ Rendering loop stopped successfully");
+        } catch (UnsatisfiedLinkError e) {
+            Log.e(TAG, "❌ Native method not found: stopRenderingLoopNative", e);
+            // 至少设置状态标志
+            isRenderingActive = false;
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error stopping rendering loop", e);
+            isRenderingActive = false;
+        }
+    }
+    
+    /**
+     * 设置渲染Surface - 用于更好的相机显示控制
+     */
+    public void setupRenderingSurface(SurfaceView surfaceView) {
+        Log.d(TAG, "🖼️ Setting up rendering surface...");
+        try {
+            if (surfaceView != null) {
+                // 设置Surface到native层
+                setSurfaceNative(surfaceView.getHolder().getSurface());
+                // 设置Surface生命周期回调
+                surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
+                    @Override
+                    public void surfaceCreated(SurfaceHolder holder) {
+                        Log.d(TAG, "🖼️ Surface created");
+                    }
+                    
+                    @Override
+                    public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+                        Log.d(TAG, "🖼️ Surface changed: " + width + "x" + height);
+                        try {
+                            onSurfaceCreatedNative(width, height);
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error handling surface change", e);
+                        }
+                    }
+                    
+                    @Override
+                    public void surfaceDestroyed(SurfaceHolder holder) {
+                        Log.d(TAG, "🖼️ Surface destroyed");
+                        try {
+                            onSurfaceDestroyedNative();
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error handling surface destruction", e);
+                        }
+                    }
+                });
+                Log.d(TAG, "✅ Rendering surface setup completed");
+            } else {
+                Log.e(TAG, "❌ SurfaceView is null");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error setting up rendering surface", e);
+        }
+    }
+    
+    // ==================== 🔧 修改：生命週期方法 ====================
+    
+    // 注意：pauseVuforia() 和 resumeVuforia() 方法已經存在於第307-340行
+    // 這裡不再重複定義，而是在現有方法中添加渲染循環控制
 }

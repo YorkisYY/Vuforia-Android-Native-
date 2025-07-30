@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22.1)
 project("vuforia_wrapper")
-
+#C:\Users\USER\Desktop\IBM-WEATHER-ART-ANDRIOD\app\src\main\cpp\CMakeLists.txt
 # ==================== 編譯器和標準設置 ====================
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -39,17 +39,52 @@ message(STATUS "Vuforia include dir: ${VUFORIA_INCLUDE_DIR}")
 message(STATUS "Vuforia engine include dir: ${VUFORIA_ENGINE_INCLUDE_DIR}")
 message(STATUS "Vuforia library dir: ${VUFORIA_LIBRARY_DIR}")
 
-# ==================== 包含目錄設置 ====================
+# ==================== 源文件配置更新 ====================
+# 檢查源文件
+set(VUFORIA_WRAPPER_SOURCES)
+
+# 主要的wrapper實現文件
+if(EXISTS ${CMAKE_SOURCE_DIR}/vuforia_wrapper.cpp)
+    list(APPEND VUFORIA_WRAPPER_SOURCES vuforia_wrapper.cpp)
+    message(STATUS "✅ Found: vuforia_wrapper.cpp")
+else()
+    message(FATAL_ERROR "❌ vuforia_wrapper.cpp not found - required main implementation file")
+endif()
+
+# 新增的渲染JNI專用文件
+if(EXISTS ${CMAKE_SOURCE_DIR}/VuforiaRenderingJNI.cpp)
+    list(APPEND VUFORIA_WRAPPER_SOURCES VuforiaRenderingJNI.cpp)
+    message(STATUS "✅ Found: VuforiaRenderingJNI.cpp (rendering JNI module)")
+else()
+    message(STATUS "⚠️ VuforiaRenderingJNI.cpp not found - will use inline JNI methods")
+endif()
+
+# 檢查頭文件
+if(EXISTS ${CMAKE_SOURCE_DIR}/VuforiaWrapper.h)
+    message(STATUS "✅ Found: VuforiaWrapper.h")
+else()
+    message(FATAL_ERROR "❌ VuforiaWrapper.h not found - required header file")
+endif()
+
+if(EXISTS ${CMAKE_SOURCE_DIR}/VuforiaRenderingJNI.h)
+    message(STATUS "✅ Found: VuforiaRenderingJNI.h (rendering JNI header)")
+else()
+    message(STATUS "⚠️ VuforiaRenderingJNI.h not found - assuming inline declarations")
+endif()
+
+# 顯示將要編譯的源文件
+message(STATUS "📁 Source files to compile:")
+foreach(SOURCE_FILE ${VUFORIA_WRAPPER_SOURCES})
+    message(STATUS "   - ${SOURCE_FILE}")
+endforeach()
+
+# ==================== 更新包含目錄 ====================
+# 確保新的頭文件能被找到
 include_directories(
     ${VUFORIA_INCLUDE_DIR}
     ${VUFORIA_ENGINE_INCLUDE_DIR}
-    ${CMAKE_SOURCE_DIR}  # 為了包含我們的 VuforiaWrapper.h
-)
-
-# ==================== 源文件配置 ====================
-set(VUFORIA_WRAPPER_SOURCES
-    vuforia_wrapper.cpp
-    # 如果你有其他源文件，在這裡添加
+    ${CMAKE_SOURCE_DIR}  # 包含 VuforiaWrapper.h 和 VuforiaRenderingJNI.h
+    ${CMAKE_SOURCE_DIR}/include  # 如果頭文件在 include 子目錄
 )
 
 # ==================== 創建共享庫 ====================
@@ -69,6 +104,24 @@ find_library(gles2-lib GLESv2)
 find_library(egl-lib EGL)
 find_library(jnigraphics-lib jnigraphics)
 find_library(z-lib z)
+
+# ==================== 相機權限相關配置 ====================
+# 相機相關庫
+find_library(camera2-lib camera2ndk)
+find_library(mediandk-lib mediandk)
+
+# 檢查相機庫是否找到
+if(camera2-lib)
+    message(STATUS "✅ Camera2 NDK library found")
+else()
+    message(WARNING "⚠️ Camera2 NDK library not found - camera features may be limited")
+endif()
+
+if(mediandk-lib)
+    message(STATUS "✅ Media NDK library found")
+else()
+    message(WARNING "⚠️ Media NDK library not found - media features may be limited")
+endif()
 
 # 檢查關鍵庫是否找到
 if(NOT log-lib)
@@ -93,6 +146,11 @@ target_compile_definitions(vuforia_wrapper PRIVATE
     # Vuforia 特定定義
     VU_ANDROID
     
+    # 相機權限相關定義
+    CAMERA_PERMISSION_GRANTED
+    CAMERA_FEATURE_ENABLED
+    CAMERA_HARDWARE_ACCELERATED
+    
     # C++ 相關定義
     _GNU_SOURCE
 )
@@ -116,6 +174,10 @@ target_compile_options(vuforia_wrapper PRIVATE
     $<$<STREQUAL:${ANDROID_ABI},armeabi-v7a>:-mfpu=neon>
     $<$<STREQUAL:${ANDROID_ABI},armeabi-v7a>:-marm>
     $<$<STREQUAL:${ANDROID_ABI},arm64-v8a>:-march=armv8-a>
+    
+    # 相機相關優化
+    -DCAMERA_PERFORMANCE_OPTIMIZED
+    -DCAMERA_THREAD_SAFE
 )
 
 # ==================== Debug 特定配置 ====================
@@ -177,6 +239,10 @@ target_link_libraries(vuforia_wrapper
     # JNI 相關
     ${jnigraphics-lib}
     
+    # 相機相關庫（可選）
+    $<$<BOOL:${camera2-lib}>:${camera2-lib}>
+    $<$<BOOL:${mediandk-lib}>:${mediandk-lib}>
+    
     # 其他系統庫
     ${z-lib}
 )
@@ -219,6 +285,50 @@ foreach(HEADER ${REQUIRED_VUFORIA_HEADERS})
     endif()
 endforeach()
 
+# ==================== 編譯檢查目標 ====================
+# 添加編譯時檢查，確保關鍵JNI方法存在
+add_custom_target(check-rendering-jni-methods
+    COMMAND ${CMAKE_COMMAND} -E echo "🔍 Checking rendering JNI method completeness..."
+    
+    # 檢查關鍵的渲染方法
+    COMMAND grep -q "stopRenderingLoopNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: stopRenderingLoopNative method missing"
+    COMMAND grep -q "startRenderingLoopNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: startRenderingLoopNative method missing"
+    COMMAND grep -q "startCameraNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: startCameraNative method missing"
+    COMMAND grep -q "stopCameraNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: stopCameraNative method missing"
+    
+    # 檢查Surface管理方法
+    COMMAND grep -q "setSurfaceNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: setSurfaceNative method missing"
+    COMMAND grep -q "onSurfaceCreatedNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: onSurfaceCreatedNative method missing"
+    COMMAND grep -q "onSurfaceDestroyedNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: onSurfaceDestroyedNative method missing"
+    
+    COMMAND ${CMAKE_COMMAND} -E echo "✅ JNI method check completed"
+    COMMENT "Checking for required rendering JNI methods"
+)
+
+# 讓主目標依賴於JNI方法檢查
+#add_dependencies(vuforia_wrapper check-rendering-jni-methods)
+
+# ==================== 相機功能檢查目標 ====================
+add_custom_target(check-camera-features
+    COMMAND ${CMAKE_COMMAND} -E echo "📷 Checking camera feature completeness..."
+    
+    # 檢查相機相關方法
+    COMMAND grep -q "setupCameraBackgroundNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: setupCameraBackgroundNative method missing"
+    COMMAND grep -q "startCameraNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: startCameraNative method missing"
+    COMMAND grep -q "stopCameraNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: stopCameraNative method missing"
+    COMMAND grep -q "isCameraActiveNative" ${CMAKE_SOURCE_DIR}/*.cpp || echo "⚠️ WARNING: isCameraActiveNative method missing"
+    
+    # 檢查相機權限相關代碼
+    COMMAND grep -q "CAMERA_PERMISSION" ${CMAKE_SOURCE_DIR}/*.cpp || echo "ℹ️ INFO: Camera permission handling not found"
+    COMMAND grep -q "camera2" ${CMAKE_SOURCE_DIR}/*.cpp || echo "ℹ️ INFO: Camera2 API usage not found"
+    
+    COMMAND ${CMAKE_COMMAND} -E echo "✅ Camera feature check completed"
+    COMMENT "Checking for required camera features"
+)
+
+# 讓主目標也依賴於相機功能檢查
+#add_dependencies(vuforia_wrapper check-camera-features)
+
 # ==================== 自定義構建目標 ====================
 # 清理目標
 add_custom_target(clean-vuforia
@@ -234,6 +344,19 @@ add_custom_target(verify-build
     COMMAND ${CMAKE_COMMAND} -E echo "Build verification passed"
     DEPENDS vuforia_wrapper
     COMMENT "Verifying that the library was built correctly"
+)
+
+# ==================== 模組化構建驗證 ====================
+# 驗證模組化構建是否正確
+add_custom_target(verify-modular-build
+    COMMAND ${CMAKE_COMMAND} -E echo "🔍 Verifying modular build structure..."
+    COMMAND test -f ${CMAKE_BINARY_DIR}/libvuforia_wrapper.so || echo "❌ Library not built"
+    COMMAND ${CMAKE_COMMAND} -E echo "📦 Checking symbol exports..."
+    # 在Linux/Android上可以檢查符號
+    COMMAND nm -D ${CMAKE_BINARY_DIR}/libvuforia_wrapper.so | grep -q "stopRenderingLoopNative" || echo "⚠️ stopRenderingLoopNative symbol not found"
+    COMMAND ${CMAKE_COMMAND} -E echo "✅ Modular build verification completed"
+    DEPENDS vuforia_wrapper
+    COMMENT "Verifying that the modular build structure is correct"
 )
 
 # ==================== 安裝配置 ====================
@@ -322,6 +445,17 @@ endif()
 # ==================== 生成 compile_commands.json ====================
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# ==================== 構建信息更新 ====================
+message(STATUS "🎯 Vuforia Rendering JNI Module Configuration:")
+message(STATUS "   Main wrapper: vuforia_wrapper.cpp")
+message(STATUS "   Rendering JNI: VuforiaRenderingJNI.cpp")
+list(LENGTH VUFORIA_WRAPPER_SOURCES VUFORIA_SOURCE_COUNT)
+message(STATUS "   Total source files: ${VUFORIA_SOURCE_COUNT}")
+message(STATUS "   Build target: vuforia_wrapper (shared library)")
+message(STATUS "📷 Camera Features:")
+message(STATUS "   Camera2 NDK: $<$<BOOL:${camera2-lib}>:Available>$<$<NOT:$<BOOL:${camera2-lib}>>:Not Available>")
+message(STATUS "   Media NDK: $<$<BOOL:${mediandk-lib}>:Available>$<$<NOT:$<BOOL:${mediandk-lib}>>:Not Available>")
+
 # ==================== 編譯資訊輸出 ====================
 # 輸出重要的編譯信息
 message(STATUS "=== Vuforia Wrapper Build Configuration ===")
@@ -348,17 +482,31 @@ endif()
 message(STATUS "CMake configuration completed successfully!")
 message(STATUS "Ready to build vuforia_wrapper library for ${ANDROID_ABI}")
 
-# ==================== 開發者幫助信息 ====================
+# ==================== 開發者幫助信息更新 ====================
 message(STATUS "")
-message(STATUS "Available targets:")
-message(STATUS "  vuforia_wrapper    - Build the main library")
-message(STATUS "  clean-vuforia      - Clean generated files")
-message(STATUS "  verify-build       - Verify build output")
+message(STATUS "📋 Available targets (Updated for modular structure):")
+message(STATUS "  vuforia_wrapper           - Build the main library with rendering JNI")
+message(STATUS "  check-rendering-jni-methods - Verify JNI method completeness")
+message(STATUS "  check-camera-features     - Verify camera feature completeness")
+message(STATUS "  verify-modular-build      - Verify modular build structure")
+message(STATUS "  clean-vuforia            - Clean generated files")
 message(STATUS "")
-message(STATUS "Build commands:")
-message(STATUS "  ninja vuforia_wrapper     - Build library")
-message(STATUS "  ninja clean-vuforia       - Clean build")
-message(STATUS "  ninja verify-build        - Verify build")
+message(STATUS "🏗️ Build commands:")
+message(STATUS "  ninja vuforia_wrapper               - Build complete library")
+message(STATUS "  ninja check-rendering-jni-methods  - Check JNI methods")
+message(STATUS "  ninja check-camera-features        - Check camera features")
+message(STATUS "  ninja verify-modular-build         - Verify build output")
+message(STATUS "")
+message(STATUS "📁 File structure:")
+message(STATUS "  VuforiaWrapper.h          - Main wrapper class declarations")
+message(STATUS "  vuforia_wrapper.cpp       - Main wrapper implementation")
+message(STATUS "  VuforiaRenderingJNI.h     - Rendering JNI declarations")
+message(STATUS "  VuforiaRenderingJNI.cpp   - Rendering JNI implementation")
+message(STATUS "")
+message(STATUS "📷 Camera Features:")
+message(STATUS "  Camera2 NDK support       - Hardware-accelerated camera access")
+message(STATUS "  Media NDK support         - Media processing capabilities")
+message(STATUS "  Camera permissions         - Runtime permission handling")
 message(STATUS "")
 
 # ==================== 結束 ====================

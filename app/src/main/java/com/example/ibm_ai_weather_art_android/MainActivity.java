@@ -18,25 +18,37 @@ import android.net.Uri;
 import android.provider.Settings;
 
 public class MainActivity extends AppCompatActivity {
-    private volatile boolean arInitializationRequested = false;
     private static final String TAG = "MainActivity";
     private static final int REQUEST_CODE_PERMISSIONS = 10;
     private static final String[] REQUIRED_PERMISSIONS = new String[]{Manifest.permission.CAMERA};
-    private boolean isVuforiaInitialized() {
-    return vuforiaCoreManager != null && vuforiaCoreManager.isVuforiaInitialized();
-}
-
+    
+    // 狀態管理
+    private volatile boolean arInitializationRequested = false;
+    private volatile boolean filamentInitialized = false;
+    private volatile boolean vuforiaInitialized = false;
+    
+    // 核心組件
+    private VuforiaCoreManager vuforiaCoreManager;
+    private FilamentRenderer filamentRenderer;
+    private GLBReader glbReader;
+    
+    // UI 組件
+    private FrameLayout cameraContainer;
+    private SurfaceView filamentSurface;
     
     static {
+        // 初始化 Filament
         Filament.init();
+        
+        // 載入 Filament 相關庫
         try {
             System.loadLibrary("gltfio-jni");
+            Log.d("MainActivity", "✅ gltfio-jni library loaded successfully");
         } catch (UnsatisfiedLinkError e) {
-            Log.e("MainActivity", "gltfio library not found", e);
+            Log.e("MainActivity", "❌ Failed to load gltfio-jni library", e);
         }
-    }
-    
-    static {
+        
+        // 載入 Vuforia 庫
         try {
             System.loadLibrary("Vuforia");
             Log.d("MainActivity", "✅ libVuforia.so loaded successfully");
@@ -45,66 +57,110 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ✅ 修正：統一使用一個 VuforiaCoreManager 實例
-    private VuforiaCoreManager vuforiaCoreManager;
-    private FilamentRenderer filamentRenderer;
-    private GLBReader glbReader;
-    
-    // UI 組件
-    private FrameLayout cameraContainer;
-    private SurfaceView filamentSurface;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         
-        // ✅ 修正：只創建一次，傳入 Activity 實例
-        vuforiaCoreManager = new VuforiaCoreManager(this);
+        Log.d(TAG, "🚀 MainActivity onCreate started");
+        
+        // 初始化核心組件
+        initializeCoreComponents();
         
         // 初始化視圖
         initViews();
         
-        // 初始化核心組件
-        initializeComponents();
+        // 設置回調
+        setupCallbacks();
         
-        // ✅ 強制每次都重新請求相機權限（解決 Vuforia 11.3 Bug）
-        ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
+        // 請求權限
+        requestCameraPermissions();
+        
+        Log.d(TAG, "✅ MainActivity onCreate completed");
     }
 
-    private void initializeComponents() {
+    private void initializeCoreComponents() {
+        Log.d(TAG, "Initializing core components...");
+        
         try {
-            Log.d(TAG, "Initializing core components...");
+            // 創建 VuforiaCoreManager
+            vuforiaCoreManager = new VuforiaCoreManager(this);
+            Log.d(TAG, "✅ VuforiaCoreManager created");
             
-            // ✅ 修正：不重複創建，直接使用已有的實例
-            // vuforiaCoreManager 已經在 onCreate 中創建了
-            
-            // 初始化 Filament 渲染器
+            // 創建 FilamentRenderer
             filamentRenderer = new FilamentRenderer(this);
+            filamentInitialized = true;
+            Log.d(TAG, "✅ FilamentRenderer created");
             
-            // 初始化 GLB 讀取器
+            // 創建 GLBReader
             glbReader = new GLBReader(this);
+            Log.d(TAG, "✅ GLBReader created");
             
-            // 設定回調
-            setupVuforiaCallbacks();
-            
-            Log.d(TAG, "Core components initialized successfully");
         } catch (Exception e) {
-            Log.e(TAG, "Error initializing components", e);
+            Log.e(TAG, "❌ Error initializing core components", e);
+            showError("核心組件初始化失敗");
         }
     }
     
-    private void setupVuforiaCallbacks() {
-        // 初始化回調
+    private void initViews() {
+        Log.d(TAG, "Initializing UI views...");
+        
+        try {
+            cameraContainer = findViewById(R.id.cameraContainer);
+            if (cameraContainer == null) {
+                Log.e(TAG, "❌ Camera container not found in layout");
+                showError("UI 初始化失敗：找不到相機容器");
+                return;
+            }
+            
+            filamentSurface = findViewById(R.id.filamentSurface);
+            if (filamentSurface == null) {
+                Log.e(TAG, "❌ Filament SurfaceView not found in layout");
+                showError("UI 初始化失敗：找不到 Filament Surface");
+                return;
+            }
+            
+            // 確保 Surface 可見
+            filamentSurface.setVisibility(android.view.View.VISIBLE);
+            
+            Log.d(TAG, "✅ UI views initialized successfully");
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error initializing views", e);
+            showError("UI 初始化失敗");
+        }
+    }
+    
+    private void setupCallbacks() {
+        Log.d(TAG, "Setting up callbacks...");
+        
+        // Vuforia 初始化回調
         vuforiaCoreManager.setInitializationCallback(new VuforiaCoreManager.InitializationCallback() {
             @Override
             public void onVuforiaInitialized(boolean success) {
                 if (success) {
                     Log.d(TAG, "✅ Vuforia initialized successfully");
-                    loadGLBModel();
+                    vuforiaInitialized = true;
+                    
+                    // 🔧 移除这行：不再设置 Filament Surface
+                    // vuforiaCoreManager.setupRenderingSurface(filamentSurface);
+                    
+                    // 启动 Vuforia 引擎
+                    if (vuforiaCoreManager.startVuforiaEngine()) {
+                        Log.d(TAG, "✅ Vuforia Engine started - Camera should show automatically!");
+                        
+                        // 🔧 移除 Filament 相关
+                        // ensureFilamentRendering();
+                        
+                        // 加载模型
+                        loadGLBModel();
+                    } else {
+                        Log.e(TAG, "❌ Failed to start Vuforia Engine");
+                        showError("Vuforia 引擎启动失败");
+                    }
                 } else {
                     Log.e(TAG, "❌ Vuforia initialization failed");
-                    showError("Vuforia 初始化失敗");
+                    vuforiaInitialized = false;
+                    showError("Vuforia 初始化失败");
                 }
             }
         });
@@ -113,8 +169,9 @@ public class MainActivity extends AppCompatActivity {
         vuforiaCoreManager.setModelLoadingCallback(new VuforiaCoreManager.ModelLoadingCallback() {
             @Override
             public void onModelLoaded(boolean success) {
-                Log.d(TAG, "📦 GLB model loaded: " + (success ? "成功" : "失敗"));
+                Log.d(TAG, "📦 GLB model loading result: " + (success ? "成功" : "失敗"));
                 if (success) {
+                    // 啟動 AR 會話
                     startARSession();
                 } else {
                     showError("3D 模型載入失敗");
@@ -131,183 +188,186 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this, "發現目標: " + targetName, Toast.LENGTH_SHORT).show();
                 });
                 
-                // 觸發 Filament 渲染
+                // 通知 Filament 顯示 3D 模型
                 if (filamentRenderer != null) {
-                    // 顯示 3D 模型
+                    // TODO: 在 Filament 中顯示 3D 模型
+                    Log.d(TAG, "📱 Should display 3D model in Filament");
                 }
             }
             
             @Override
             public void onTargetLost(String targetName) {
                 Log.d(TAG, "❌ Target lost: " + targetName);
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "目標丟失: " + targetName, Toast.LENGTH_SHORT).show();
+                });
+                
                 // 隱藏 3D 模型
+                if (filamentRenderer != null) {
+                    // TODO: 在 Filament 中隱藏 3D 模型
+                    Log.d(TAG, "📱 Should hide 3D model in Filament");
+                }
             }
             
             @Override
             public void onTargetTracking(String targetName, float[] modelViewMatrix) {
-                Log.d(TAG, "📡 Target tracking: " + targetName);
-                // 更新 3D 模型位置
+                // 更新 3D 模型位置和姿態
                 if (filamentRenderer != null) {
-                    // 更新變換矩陣
+                    // TODO: 更新 Filament 中的變換矩陣
+                    // Log.d(TAG, "📡 Updating model transform for: " + targetName);
                 }
             }
         });
+        
+        Log.d(TAG, "✅ Callbacks setup completed");
     }
     
-    private void initViews() {
-        Log.d(TAG, "初始化視圖組件");
+    private void requestCameraPermissions() {
+        Log.d(TAG, "Requesting camera permissions...");
         
-        cameraContainer = findViewById(R.id.cameraContainer);
-        if (cameraContainer == null) {
-            Log.e(TAG, "Camera container not found");
+        if (allPermissionsGranted()) {
+            Log.d(TAG, "✅ All permissions already granted");
+            onPermissionsGranted();
+        } else {
+            Log.d(TAG, "📋 Requesting camera permissions");
+            ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
+        }
+    }
+    
+    private void onPermissionsGranted() {
+        Log.d(TAG, "🔑 Camera permissions granted");
+        
+        // 如果已經初始化過，不要重複初始化
+        if (vuforiaInitialized) {
+            Log.d(TAG, "✅ Vuforia already initialized, skipping initialization");
             return;
         }
         
-        filamentSurface = findViewById(R.id.filamentSurface);
-        if (filamentSurface == null) {
-            Log.e(TAG, "Filament SurfaceView not found");
-            return;
+        // 如果還沒請求過初始化，現在開始
+        if (!arInitializationRequested) {
+            arInitializationRequested = true;
+            
+            // 延遲初始化（給 Vuforia 11.x 足夠時間）
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                if (!vuforiaInitialized) {
+                    Log.d(TAG, "🚀 Starting AR initialization with 3s delay");
+                    initializeAR();
+                } else {
+                    Log.d(TAG, "✅ Vuforia initialized while waiting");
+                }
+            }, 3000);
         }
-        
-        Log.d(TAG, "視圖組件初始化完成");
     }
     
     private void initializeAR() {
-        Log.d(TAG, "開始初始化 AR 系統");
+        Log.d(TAG, "🔄 Starting AR system initialization...");
         
         try {
-            // 1. 設定 Filament Surface
+            // 1. 設置 Filament Surface（用於3D模型渲染）
             if (filamentRenderer != null && filamentSurface != null) {
+                Log.d(TAG, "🎬 Setting up Filament surface...");
                 filamentRenderer.setupSurface(filamentSurface);
+                
+                // 啟動 Filament 渲染循環
+                Log.d(TAG, "▶️ Starting Filament rendering...");
+                filamentRenderer.startRendering();
+                
+                // 等待一下讓 Filament 初始化完成
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                    // 2. 檢查 GLB 檔案
+                    checkGLBFiles();
+                    
+                    // 3. 初始化 Vuforia（這會觸發回調鏈，Surface會在回調中設置）
+                    Log.d(TAG, "🎯 Starting Vuforia initialization...");
+                    vuforiaCoreManager.setupVuforia();
+                }, 500);
+                
+            } else {
+                Log.e(TAG, "❌ FilamentRenderer or SurfaceView is null");
+                showError("Filament 組件未就緒");
             }
             
-            // 2. 檢查 GLB 檔案
-            checkGLBFiles();
-            
-            // 3. 初始化 Vuforia (會觸發 onVuforiaInitialized 回調)
-            vuforiaCoreManager.setupVuforia();
-            
         } catch (Exception e) {
-            Log.e(TAG, "AR 初始化錯誤: " + e.getMessage());
-            showError("AR 初始化失敗");
+            Log.e(TAG, "❌ Error during AR initialization", e);
+            showError("AR 系統初始化失敗: " + e.getMessage());
+        }
+    }
+    
+    private void ensureFilamentRendering() {
+        if (filamentRenderer != null) {
+            if (!filamentRenderer.isRendering()) {
+                Log.d(TAG, "🔄 Filament not rendering, starting now...");
+                filamentRenderer.startRendering();
+            } else {
+                Log.d(TAG, "✅ Filament already rendering");
+            }
         }
     }
     
     private void checkGLBFiles() {
-        String[] glbFiles = glbReader.listAvailableGLBFiles();
-        Log.d(TAG, "可用的 GLB 檔案: " + java.util.Arrays.toString(glbFiles));
-        
-        GLBReader.GLBFileInfo giraffeInfo = glbReader.getGLBFileInfo("giraffe_voxel.glb");
-        Log.d(TAG, "長頸鹿模型資訊: " + giraffeInfo.fileName + " - 有效: " + giraffeInfo.isValid + " - 大小: " + giraffeInfo.fileSize);
+        try {
+            String[] glbFiles = glbReader.listAvailableGLBFiles();
+            Log.d(TAG, "📁 Available GLB files: " + java.util.Arrays.toString(glbFiles));
+            
+            GLBReader.GLBFileInfo giraffeInfo = glbReader.getGLBFileInfo("giraffe_voxel.glb");
+            Log.d(TAG, "🦒 Giraffe model info: " + giraffeInfo.fileName + 
+                      " - Valid: " + giraffeInfo.isValid + 
+                      " - Size: " + giraffeInfo.fileSize + " bytes");
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error checking GLB files", e);
+        }
     }
     
     private void loadGLBModel() {
         try {
+            Log.d(TAG, "📦 Loading GLB model...");
+            
             GLBReader.GLBFileInfo glbInfo = glbReader.getGLBFileInfo("giraffe_voxel.glb");
             if (glbInfo.isValid) {
-                Log.d(TAG, "Loading GLB model: " + glbInfo.fileName);
-                vuforiaCoreManager.loadGiraffeModel(); // 會觸發 onModelLoaded 回調
+                Log.d(TAG, "✅ GLB file valid, loading: " + glbInfo.fileName);
+                vuforiaCoreManager.loadGiraffeModel();
             } else {
-                showError("GLB 檔案無效: " + glbInfo.fileName);
+                Log.e(TAG, "❌ GLB file invalid: " + glbInfo.fileName);
+                showError("GLB 檔案無效");
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error loading GLB model", e);
-            showError("GLB 模型載入錯誤");
+            Log.e(TAG, "❌ Error loading GLB model", e);
+            showError("GLB 模型載入錯誤: " + e.getMessage());
         }
     }
     
     private void startARSession() {
         try {
-            Log.d(TAG, "Starting AR session...");
+            Log.d(TAG, "🎉 Starting AR session...");
             
             // 啟動目標檢測
             if (vuforiaCoreManager.startTargetDetection()) {
-                Log.d(TAG, "🎉 AR 會話啟動成功！");
-                Toast.makeText(this, "AR 系統就緒", Toast.LENGTH_SHORT).show();
+                Log.d(TAG, "🎯 Target detection started successfully");
+                
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "AR 系統就緒！請將相機對準目標圖像", Toast.LENGTH_LONG).show();
+                });
+                
+                Log.d(TAG, "🎉 AR session started successfully!");
             } else {
+                Log.e(TAG, "❌ Failed to start target detection");
                 showError("目標檢測啟動失敗");
             }
             
         } catch (Exception e) {
-            Log.e(TAG, "Error starting AR session", e);
-            showError("AR 會話啟動失敗");
+            Log.e(TAG, "❌ Error starting AR session", e);
+            showError("AR 會話啟動失敗: " + e.getMessage());
         }
     }
     
     private void showError(String message) {
+        Log.e(TAG, "🚨 Error: " + message);
         runOnUiThread(() -> {
             Toast.makeText(this, message, Toast.LENGTH_LONG).show();
         });
     }
-    
-    // ==================== 生命週期管理 ====================
-    
-    @Override
-    protected void onPause() {
-        super.onPause();
-        Log.d(TAG, "onPause - 暫停 AR 組件");
-        
-        // ✅ 修正：統一使用 vuforiaCoreManager
-        try {
-            if (vuforiaCoreManager != null) {
-                vuforiaCoreManager.pauseVuforia();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error during Vuforia pause", e);
-        }
-    }
-    // 替换您的 onResume 方法为以下代码：
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        Log.d(TAG, "onResume - 恢復 AR 組件");
-        
-        // ✅ 如果已經成功初始化，只需要恢復
-        if (isVuforiaInitialized()) {
-            Log.d(TAG, "✅ Vuforia already initialized, just resuming...");
-            try {
-                if (vuforiaCoreManager != null) {
-                    vuforiaCoreManager.resumeVuforia();
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error during Vuforia resume", e);
-            }
-            return;
-        }
-        
-        // ✅ 如果有權限但還沒初始化，且沒有請求過初始化
-        if (allPermissionsGranted() && !arInitializationRequested) {
-            Log.d(TAG, "🔄 Permissions granted, requesting AR initialization");
-            arInitializationRequested = true;
-            
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                if (!isVuforiaInitialized()) {  // 雙重檢查
-                    Log.d(TAG, "🚀 Starting delayed AR initialization from onResume");
-                    initializeAR();
-                } else {
-                    Log.d(TAG, "✅ Vuforia initialized while waiting");
-                }
-            }, 500);
-        }
-    }
-    
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        Log.d(TAG, "onDestroy - 清理 AR 資源");
-        
-        // ✅ 修正：統一使用 vuforiaCoreManager
-        if (vuforiaCoreManager != null) {
-            vuforiaCoreManager.cleanupManager();
-        }
-        
-        if (filamentRenderer != null) {
-            filamentRenderer.destroy();
-        }
-    }
-
-    // ==================== 權限檢查 ====================
+    // ==================== 權限處理 ====================
     
     private boolean allPermissionsGranted() {
         for (String permission : REQUIRED_PERMISSIONS) {
@@ -321,41 +381,22 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
-                Log.d(TAG, "🔄 Camera permission granted");
-                
-                // ✅ 如果已經初始化成功，不需要再初始化
-                if (isVuforiaInitialized()) {
-                    Log.d(TAG, "✅ Vuforia already initialized, no need to initialize again");
-                    return;
-                }
-                
-                // ✅ 如果還沒請求過初始化，現在請求
-                if (!arInitializationRequested) {
-                    arInitializationRequested = true;
-                    
-                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                        if (!isVuforiaInitialized()) {
-                            Log.d(TAG, "🚀 Starting delayed AR initialization (3s delay for Vuforia 11.x)");
-                            initializeAR();
-                        } else {
-                            Log.d(TAG, "✅ Vuforia initialized while waiting");
-                        }
-                    }, 3000); // 3秒延遲
-                } else {
-                    Log.d(TAG, "⚠️ AR initialization already requested");
-                }
+                Log.d(TAG, "✅ Camera permissions granted by user");
+                onPermissionsGranted();
             } else {
-                Toast.makeText(this, "需要相機權限", Toast.LENGTH_SHORT).show();
-                finish();
+                Log.e(TAG, "❌ Camera permissions denied by user");
+                showPermissionDeniedDialog();
             }
         }
     }
-    private void showPermissionResetDialog() {
+    
+    private void showPermissionDeniedDialog() {
         new AlertDialog.Builder(this)
-            .setTitle("Vuforia 初始化失敗")
-            .setMessage("這是 Vuforia 11.x 的已知問題。\n\n解決方法：\n1. 點擊'前往設置'\n2. 關閉相機權限\n3. 重新啟動應用\n4. 重新授予相機權限")
+            .setTitle("需要相機權限")
+            .setMessage("此應用需要相機權限才能使用 AR 功能。請授予相機權限。")
             .setPositiveButton("前往設置", (dialog, which) -> {
                 try {
                     Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
@@ -364,15 +405,112 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     Log.e(TAG, "無法打開設置頁面", e);
-                    Toast.makeText(this, "請手動前往設置關閉相機權限", Toast.LENGTH_LONG).show();
+                    showError("請手動前往設置授予相機權限");
                 }
             })
-            .setNegativeButton("重試", (dialog, which) -> {
-                // ✅ 重置請求狀態並重試
-                arInitializationRequested = false;
-                ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
+            .setNegativeButton("退出應用", (dialog, which) -> {
+                finish();
             })
             .setCancelable(false)
             .show();
     }
+
+    // ==================== 生命週期管理 ====================
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Log.d(TAG, "▶️ onResume - Resuming AR components");
+        
+        // 恢復 Filament 渲染
+        if (filamentRenderer != null && filamentInitialized) {
+            Log.d(TAG, "▶️ Resuming Filament renderer");
+            filamentRenderer.resume();
+        }
+        
+        // 恢復 Vuforia
+        if (vuforiaCoreManager != null && vuforiaInitialized) {
+            Log.d(TAG, "▶️ Resuming Vuforia");
+            try {
+                vuforiaCoreManager.resumeVuforia();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error resuming Vuforia", e);
+            }
+        }
+        
+        // 如果權限已授予但還沒初始化，現在初始化
+        if (allPermissionsGranted() && !vuforiaInitialized && !arInitializationRequested) {
+            Log.d(TAG, "🔄 Permissions granted but not initialized, starting initialization");
+            onPermissionsGranted();
+        }
     }
+    
+    @Override
+    protected void onPause() {
+        super.onPause();
+        Log.d(TAG, "⏸️ onPause - Pausing AR components");
+        
+        // 暫停 Filament 渲染
+        if (filamentRenderer != null) {
+            Log.d(TAG, "⏸️ Pausing Filament renderer");
+            filamentRenderer.pause();
+        }
+        
+        // 暫停 Vuforia
+        if (vuforiaCoreManager != null && vuforiaInitialized) {
+            Log.d(TAG, "⏸️ Pausing Vuforia");
+            try {
+                vuforiaCoreManager.pauseVuforia();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error pausing Vuforia", e);
+            }
+        }
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        Log.d(TAG, "🗑️ onDestroy - Cleaning up AR resources");
+        
+        // 清理 Vuforia
+        if (vuforiaCoreManager != null) {
+            Log.d(TAG, "🗑️ Cleaning up VuforiaCoreManager");
+            try {
+                vuforiaCoreManager.cleanupManager();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error cleaning up Vuforia", e);
+            }
+            vuforiaCoreManager = null;
+        }
+        
+        // 清理 Filament
+        if (filamentRenderer != null) {
+            Log.d(TAG, "🗑️ Destroying FilamentRenderer");
+            try {
+                filamentRenderer.destroy();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error destroying Filament", e);
+            }
+            filamentRenderer = null;
+        }
+        
+        // 清理其他組件
+        glbReader = null;
+        
+        Log.d(TAG, "✅ MainActivity destroyed completely");
+    }
+    
+    // ==================== 狀態檢查輔助方法 ====================
+    
+    private boolean isVuforiaInitialized() {
+        return vuforiaInitialized && vuforiaCoreManager != null && vuforiaCoreManager.isVuforiaInitialized();
+    }
+    
+    private boolean isFilamentInitialized() {
+        return filamentInitialized && filamentRenderer != null;
+    }
+    
+    private boolean isSystemReady() {
+        return isVuforiaInitialized() && isFilamentInitialized() && allPermissionsGranted();
+    }
+}

@@ -2,38 +2,62 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Camera permission for Vuforia -->
+    <!-- ==================== Vuforia 11.3.4 必需權限 ==================== -->
+    <!-- 相機權限 (核心功能) -->
     <uses-permission android:name="android.permission.CAMERA" />
+    
+    <!-- 網路權限 (Vuforia 需要下載設備優化參數) -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     
-    <!-- Vuforia 11.3.4 必需權限 -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- API 31+ 感應器權限 (VISLAM 功能必需) -->
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
     
-    <!-- 🆕 媒體權限 (Android 13+ / API 33+) -->
+    <!-- 外部存儲權限 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    
+    <!-- ==================== Android 13+ 媒體權限 ==================== -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     
-    <!-- 🆕 向下兼容權限 (Android 12 及以下) -->
+    <!-- 向下兼容權限 (Android 12 及以下) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
         android:maxSdkVersion="32" />
-    
-    <!-- Camera hardware requirement -->
+
+    <!-- ==================== 硬體功能需求 ==================== -->
+    <!-- 相機硬體 (必需) -->
     <uses-feature
         android:name="android.hardware.camera"
         android:required="true" />
+    
+    <!-- 後置相機支援 (推薦) -->
+    <uses-feature
+        android:name="android.hardware.camera.back"
+        android:required="false" />
     
     <!-- 相機自動對焦支援 -->
     <uses-feature
         android:name="android.hardware.camera.autofocus"
         android:required="false" />
     
-    <!-- OpenGL ES 2.0 requirement for Vuforia -->
+    <!-- 相機閃光燈支援 -->
+    <uses-feature
+        android:name="android.hardware.camera.flash"
+        android:required="false" />
+    
+    <!-- OpenGL ES 2.0 (Vuforia 必需) -->
     <uses-feature
         android:glEsVersion="0x00020000"
         android:required="true" />
+    
+    <!-- AR 相關感應器 (可選，但有助於追蹤) -->
+    <uses-feature
+        android:name="android.hardware.sensor.accelerometer"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.sensor.gyroscope"
+        android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -44,6 +68,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.IBMAIWEATHERARTANDROID"
+        android:hardwareAccelerated="true"
         tools:targetApi="34">
 
         <!-- Main Activity -->
@@ -52,9 +77,10 @@
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.IBMAIWEATHERARTANDROID"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|uiMode"
             android:screenOrientation="portrait"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            android:hardwareAccelerated="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
