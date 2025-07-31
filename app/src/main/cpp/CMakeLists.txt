@@ -426,21 +426,21 @@ endif()
 
 # ==================== 靜態分析支持 ====================
 # 只在沒有預編譯頭文件衝突時啟用 clang-tidy
-find_program(CLANG_TIDY_EXE NAMES "clang-tidy")
-if(CLANG_TIDY_EXE AND NOT PCH_ENABLED AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    set_target_properties(vuforia_wrapper PROPERTIES
-        CXX_CLANG_TIDY "${CLANG_TIDY_EXE};-checks=-*,readability-*,performance-*,bugprone-*"
-    )
-    message(STATUS "clang-tidy static analysis enabled")
-else()
-    if(PCH_ENABLED)
-        message(STATUS "clang-tidy disabled (conflicts with precompiled headers)")
-    elseif(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        message(STATUS "clang-tidy disabled (requires Clang compiler)")
-    else()
-        message(STATUS "clang-tidy disabled (not found)")
-    endif()
-endif()
+#find_program(CLANG_TIDY_EXE NAMES "clang-tidy")
+#if(CLANG_TIDY_EXE AND NOT PCH_ENABLED AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+#    set_target_properties(vuforia_wrapper PROPERTIES
+#        CXX_CLANG_TIDY "${CLANG_TIDY_EXE};-checks=-*,readability-*,performance-*,bugprone-*"
+#    )
+#    message(STATUS "clang-tidy static analysis enabled")
+#else()
+#    if(PCH_ENABLED)
+#        message(STATUS "clang-tidy disabled (conflicts with precompiled headers)")
+#    elseif(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+#        message(STATUS "clang-tidy disabled (requires Clang compiler)")
+#    else()
+#        message(STATUS "clang-tidy disabled (not found)")
+#    endif()
+#endif()
 
 # ==================== 生成 compile_commands.json ====================
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

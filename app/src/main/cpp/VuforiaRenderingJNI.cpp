@@ -424,7 +424,7 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_initializeOpe
         return JNI_FALSE;
     }
 }
-
+}
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_renderFrameWithVideoBackgroundNative(
@@ -1048,4 +1048,3 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_setRenderingQ
     }
 }
 
-}

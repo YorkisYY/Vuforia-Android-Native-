@@ -739,228 +739,69 @@ namespace VuforiaWrapper {
             LOGE("Exception during frame rendering: %s", e.what());
         }
     }
-    void renderVideoBackgroundWithProperShader(const VuRenderState& renderState) {
-        if (!g_renderingState.initialized || g_renderingState.videoBackgroundShaderProgram == 0) {
-            LOGW_RENDER("⚠️ Rendering not initialized");
-            return;
-        }
-        
-        try {
-            // ✅ 修正：使用 Vuforia 11.3.4 的正確成員名稱
-            if (renderState.vbMesh == nullptr || 
-                renderState.vbMesh->position == nullptr ||
-                renderState.vbMesh->numVertices <= 0) {
-                LOGW_RENDER("⚠️ Invalid vbMesh data - skipping video background rendering");
-                return;
-            }
-            
-            // ✅ 修正：直接使用頂點數量
-            int vertexCount = renderState.vbMesh->numVertices;
-            LOGD_RENDER("🎥 Rendering video background with %d vertices", vertexCount);
-            
-            // 設置OpenGL狀態
-            glDisable(GL_DEPTH_TEST);
-            glDisable(GL_CULL_FACE);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            
-            // 使用著色器程序
-            glUseProgram(g_renderingState.videoBackgroundShaderProgram);
-            
-            // 設置投影矩陣
-            GLint projMatrixLocation = glGetUniformLocation(g_renderingState.videoBackgroundShaderProgram, "u_projectionMatrix");
-            if (projMatrixLocation != -1) {
-                glUniformMatrix4fv(projMatrixLocation, 1, GL_FALSE, renderState.vbProjectionMatrix.data);
-            }
-            
-            // 設置模型視图矩陣（單位矩陣）
-            GLint mvMatrixLocation = glGetUniformLocation(g_renderingState.videoBackgroundShaderProgram, "u_modelViewMatrix");
-            if (mvMatrixLocation != -1) {
-                const float identityMatrix[16] = {
-                    1.0F, 0.0F, 0.0F, 0.0F,
-                    0.0F, 1.0F, 0.0F, 0.0F,
-                    0.0F, 0.0F, 1.0F, 0.0F,
-                    0.0F, 0.0F, 0.0F, 1.0F
-                };
-                glUniformMatrix4fv(mvMatrixLocation, 1, GL_FALSE, identityMatrix);
-            }
-            
-            // 設置透明度
-            GLint alphaLocation = glGetUniformLocation(g_renderingState.videoBackgroundShaderProgram, "u_alpha");
-            if (alphaLocation != -1) {
-                glUniform1f(alphaLocation, 1.0F);
-            }
-            
-            // 激活並綁定相機紋理
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_EXTERNAL_OES, g_renderingState.videoBackgroundTextureId);
-            GLint textureLocation = glGetUniformLocation(g_renderingState.videoBackgroundShaderProgram, "u_cameraTexture");
-            if (textureLocation != -1) {
-                glUniform1i(textureLocation, 0);
-            }
-            
-            // 設置頂點屬性
-            GLint positionAttribute = glGetAttribLocation(g_renderingState.videoBackgroundShaderProgram, "a_position");
-            GLint texCoordAttribute = glGetAttribLocation(g_renderingState.videoBackgroundShaderProgram, "a_texCoord");
-            
-            // ✅ 修正：使用新的 position 成員
-            if (positionAttribute != -1 && renderState.vbMesh->position != nullptr) {
-                glEnableVertexAttribArray(positionAttribute);
-                glVertexAttribPointer(positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 
-                                    renderState.vbMesh->position);
-            }
-            
-            // ✅ 修正：檢查 textureCoordinate 可用性
-            if (texCoordAttribute != -1 && 
-                renderState.vbMesh->textureCoordinate != nullptr) {
-                glEnableVertexAttribArray(texCoordAttribute);
-                glVertexAttribPointer(texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 
-                                    renderState.vbMesh->textureCoordinate);
-            }
-            
-            // ✅ 修正：使用索引繪製或直接繪製
-            if (renderState.vbMesh->numIndices > 0 && renderState.vbMesh->index != nullptr) {
-                // 使用索引繪製
-                glDrawElements(GL_TRIANGLES, renderState.vbMesh->numIndices, GL_UNSIGNED_SHORT, 
-                            renderState.vbMesh->index);
-                LOGD_RENDER("✅ Video background rendered with %d indices", renderState.vbMesh->numIndices);
-            } else if (renderState.vbMesh->numVertices > 0) {
-                // 直接繪製頂點
-                glDrawArrays(GL_TRIANGLES, 0, vertexCount);
-                LOGD_RENDER("✅ Video background rendered with %d vertices", vertexCount);
-            }
-            
-            // 清理
-            if (positionAttribute != -1) {
-                glDisableVertexAttribArray(positionAttribute);
-            }
-            if (texCoordAttribute != -1) {
-                glDisableVertexAttribArray(texCoordAttribute);
-            }
-            
-            glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
-            glUseProgram(0);
-            
-            // 恢復OpenGL狀態
-            glEnable(GL_DEPTH_TEST);
-            glEnable(GL_CULL_FACE);
-            glDisable(GL_BLEND);
-            
-            LOGD_RENDER("✅ Video background rendering completed successfully");
-            
-        } catch (const std::exception& e) {
-            LOGE_RENDER("❌ Error in renderVideoBackgroundWithProperShader: %s", e.what());
-            glUseProgram(0);
-        }
-    }
 
     // ==================== 完整的 renderVideoBackgroundWithTexture 函數實現 ====================
 // 基於 Vuforia 11.3.4 官方文檔和 OpenGL ES 2.0 最佳實踐
 
     void VuforiaEngineWrapper::renderVideoBackgroundWithTexture(const VuRenderState& renderState) {
         try {
-            // ✅ 修正：檢查新的 VuMesh 結構
+            // ✅ 修正：使用正確的成員名稱
             if (renderState.vbMesh == nullptr ||
-                renderState.vbMesh->positions == nullptr ||              // ✅ vertexPositions → positions
-                renderState.vbMesh->numPositions <= 0) {                 // ✅ numVertices → numPositions
+                renderState.vbMesh->pos == nullptr ||              // ✅ positions → pos
+                renderState.vbMesh->numVertices <= 0) {            // ✅ numPositions → numVertices
                 LOGW("Invalid video background mesh data");
                 return;
             }
             
             // ✅ 修正：計算頂點數
-            int vertexCount = renderState.vbMesh->numPositions / 3;
+            int vertexCount = renderState.vbMesh->numVertices;     // ✅ 不需要除以3
             LOGD("🎥 Rendering video background with %d vertices", vertexCount);
             
-            // ✅ 設置 OpenGL 狀態 - 專門用於視頻背景渲染
-            glDisable(GL_DEPTH_TEST);    // 視頻背景不需要深度測試
-            glDisable(GL_CULL_FACE);     // 確保所有面都被渲染
-            glEnable(GL_BLEND);          // 啟用混合
+            // 設置 OpenGL 狀態
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE);
+            glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            
-            // ✅ 設置紋理狀態（假設 Vuforia 已經綁定了相機紋理）
             glEnable(GL_TEXTURE_2D);
             
-            // ✅ 修正：使用 glDrawArrays 而不是 glDrawElements
-            if (renderState.vbMesh->numPositions > 0) {
+            // ✅ 使用正確的渲染方式
+            if (renderState.vbMesh->faceIndices != nullptr && renderState.vbMesh->numFaces > 0) {
+                // 使用索引渲染
+                glDrawElements(GL_TRIANGLES, renderState.vbMesh->numFaces * 3, 
+                            GL_UNSIGNED_INT, renderState.vbMesh->faceIndices);
+                LOGD("✅ Video background rendered with %d faces", renderState.vbMesh->numFaces);
+            } else if (renderState.vbMesh->numVertices > 0) {
+                // 直接頂點渲染
                 glDrawArrays(GL_TRIANGLES, 0, vertexCount);
                 LOGD("✅ Video background rendered with %d vertices", vertexCount);
             }
             
-            // ✅ 恢復 OpenGL 狀態
+            // 恢復 OpenGL 狀態
             glEnable(GL_DEPTH_TEST);
             glEnable(GL_CULL_FACE);
             glDisable(GL_BLEND);
             glDisable(GL_TEXTURE_2D);
             
-            LOGD("✅ Video background rendered successfully with texture coordinates");
-            
         } catch (const std::exception& e) {
             LOGE("❌ Error in renderVideoBackgroundWithTexture: %s", e.what());
-        } catch (...) {
-            LOGE("❌ Unknown error in renderVideoBackgroundWithTexture");
         }
     }
 
 
-    // ==================== 現代 OpenGL ES 2.0 着色器版本（推薦用於產品） ====================
-    // 如果您想使用更現代的着色器方法，可以使用下面的版本：
 
-    void VuforiaEngineWrapper::renderVideoBackgroundWithShader(const VuRenderState& renderState) {
-        // 注意：這個版本需要預先創建和編譯着色器程序
-        // 由於需要大量的着色器設置代碼，這裡提供一個簡化版本
-        /*
-        try {
-            if (renderState.vbMesh->vertexPositions == nullptr || 
-                renderState.vbMesh->textureCoordinates == nullptr ||
-                renderState.vbMesh->numVertices <= 0) {
-                return;
-            }*/
-            
-            // ✅ 假設您已經創建了视频背景着色器程序
-            // GLuint videoBackgroundProgram = createVideoBackgroundShaderProgram();
-            // glUseProgram(videoBackgroundProgram);
-            
-            // ✅ 設置 uniform 變量
-            // GLint projMatrixLocation = glGetUniformLocation(videoBackgroundProgram, "u_projectionMatrix");
-            // glUniformMatrix4fv(projMatrixLocation, 1, GL_FALSE, renderState.vbProjectionMatrix.data);
-            
-            // ✅ 設置頂點屬性
-            // GLint positionAttribute = glGetAttribLocation(videoBackgroundProgram, "a_position");
-            // GLint texCoordAttribute = glGetAttribLocation(videoBackgroundProgram, "a_texCoord");
-            
-            // glEnableVertexAttribArray(positionAttribute);
-            // glEnableVertexAttribArray(texCoordAttribute);
-            
-            // glVertexAttribPointer(positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, renderState.vbMesh.vertexPositions);
-            // glVertexAttribPointer(texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, renderState.vbMesh.textureCoordinates);
-            
-            // ✅ 渲染
-            // glDrawArrays(GL_TRIANGLES, 0, renderState.vbMesh.numVertices);
-            
-            // ✅ 清理
-            // glDisableVertexAttribArray(positionAttribute);
-            // glDisableVertexAttribArray(texCoordAttribute);
-            // glUseProgram(0);
-            
-            LOGD("✅ Video background rendered with modern shader");
-            
-        } catch (const std::exception& e) {
-            LOGE("❌ Error in renderVideoBackgroundWithShader: %s", e.what());
-        }
-    }
+
 
     // ==================== 着色器程序創建輔助函數（可選） ====================
     void VuforiaEngineWrapper::renderVideoBackgroundMesh(const VuRenderState& renderState) {
         if (renderState.vbMesh == nullptr || 
-            renderState.vbMesh->positions == nullptr ||
-            renderState.vbMesh->numPositions <= 0) {
+            renderState.vbMesh->pos == nullptr ||              // ✅ positions → pos
+            renderState.vbMesh->numVertices <= 0) {            // ✅ numPositions → numVertices
             LOGW("Invalid mesh data for video background");
             return;
         }
 
         try {
-            // 計算頂點數
-            int vertexCount = renderState.vbMesh->numPositions / 3;
+            int vertexCount = renderState.vbMesh->numVertices;  // ✅ 不需要除以3
             LOGD("🎥 Rendering video background mesh with %d vertices", vertexCount);
 
             // 設置 OpenGL 狀態
@@ -969,52 +810,55 @@ namespace VuforiaWrapper {
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            // ✅ 使用 Vuforia 11.3.4 正確的渲染方式
-            if (renderState.vbMesh->positions != nullptr && renderState.vbMesh->numPositions > 0) {
-                // 使用 glDrawArrays 渲染三角形
-                glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+            // ✅ 使用正確的成員和渲染方式
+            if (renderState.vbMesh->pos != nullptr && renderState.vbMesh->numVertices > 0) {
+                if (renderState.vbMesh->faceIndices != nullptr && renderState.vbMesh->numFaces > 0) {
+                    // 使用索引渲染
+                    glDrawElements(GL_TRIANGLES, renderState.vbMesh->numFaces * 3, 
+                                GL_UNSIGNED_INT, renderState.vbMesh->faceIndices);
+                } else {
+                    // 直接頂點渲染
+                    glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+                }
                 LOGD("✅ Video background mesh rendered with %d vertices", vertexCount);
             }
             
-            // 恢復 OpenGL 狀態
             glEnable(GL_DEPTH_TEST);
             glDisable(GL_BLEND);
             
         } catch (const std::exception& e) {
             LOGE("❌ Error in renderVideoBackgroundMesh: %s", e.what());
         }
-}
-    void VuforiaEngineWrapper::renderCameraBackgroundSimple(const VuState* state) {
-        if (state == nullptr) {
+    }
+  void VuforiaEngineWrapper::renderCameraBackgroundSimple(const VuState* state) {
+    if (state == nullptr) {
+        return;
+    }
+    
+    try {
+        VuRenderState renderState;
+        VuResult result = vuStateGetRenderState(state, &renderState);
+        if (result != VU_SUCCESS) {
+            LOGW("Failed to get render state");
             return;
         }
         
-        try {
-            // ✅ 獲取渲染狀態
-            VuRenderState renderState;
-            VuResult result = vuStateGetRenderState(state, &renderState);
-            if (result != VU_SUCCESS) {
-                LOGW("Failed to get render state");
-                return;
-            }
-            
-            // ✅ 基本清屏
-            glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            
-            // ✅ 修正：使用正確的條件檢查
-            if (renderState.vbMesh != nullptr && 
-                renderState.vbMesh->numPositions > 0) {          // ✅ numVertices → numPositions
-                // 使用 Vuforia 提供的視頻背景網格進行渲染
-                renderVideoBackgroundMesh(renderState);
-            }
-            
-            LOGD("📷 Camera background rendered with render state");
-            
-        } catch (const std::exception& e) {
-            LOGE("❌ Error in renderCameraBackgroundSimple: %s", e.what());
+        // 基本清屏
+        glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        // ✅ 使用正確的成員檢查
+        if (renderState.vbMesh != nullptr && 
+            renderState.vbMesh->numVertices > 0) {         // ✅ numPositions → numVertices
+            renderVideoBackgroundMesh(renderState);
         }
+        
+        LOGD("📷 Camera background rendered with render state");
+        
+    } catch (const std::exception& e) {
+        LOGE("❌ Error in renderCameraBackgroundSimple: %s", e.what());
     }
+}
 
     void VuforiaEngineWrapper::processVuforiaState(const VuState* state) {
         // 提取相機幀數據
@@ -1151,13 +995,21 @@ namespace VuforiaWrapper {
     }
     
     std::string VuforiaEngineWrapper::getVuforiaVersion() const {
-        // 修正：Vuforia 11.x 中函數不需要參數，直接返回值
         VuLibraryVersionInfo versionInfo = vuEngineGetLibraryVersionInfo();
         
-        char versionString[VERSION_STRING_SIZE];  // 使用常量
-        snprintf(versionString, sizeof(versionString), 
-                "Vuforia Engine %d.%d.%d (Build %d)", 
-                versionInfo.major, versionInfo.minor, versionInfo.patch, versionInfo.build);
+        char versionString[VERSION_STRING_SIZE];
+        // ✅ 修正：檢查 build 字段類型
+        if (sizeof(versionInfo.build) == sizeof(int)) {
+            // 如果 build 是整數
+            snprintf(versionString, sizeof(versionString), 
+                    "Vuforia Engine %d.%d.%d (Build %d)", 
+                    versionInfo.major, versionInfo.minor, versionInfo.patch, versionInfo.build);
+        } else {
+            // 如果 build 是字符串
+            snprintf(versionString, sizeof(versionString), 
+                    "Vuforia Engine %d.%d.%d (Build %s)", 
+                    versionInfo.major, versionInfo.minor, versionInfo.patch, versionInfo.build);
+        }
         return std::string(versionString);
     }
     

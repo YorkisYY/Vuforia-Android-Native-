@@ -21,6 +21,7 @@
 #include <GLES3/gl3.h>       // OpenGL ES 3.0
 #include <GLES2/gl2ext.h>    // OpenGL扩展
 #include <EGL/egl.h>
+
 // ==================== Vuforia Engine 11 核心頭文件 ====================
 #include <VuforiaEngine/VuforiaEngine.h>
 
@@ -559,6 +560,8 @@ namespace VuforiaWrapper {
         void renderVideoBackgroundMesh(const VuRenderState& renderState);
         VuEngine* getEngine() const { return mEngine; }
     };
+}
+
 // ==================== 全局工具函數聲明 ====================
 namespace VuforiaWrapper {
     // 矩陣轉換工具
