@@ -8,7 +8,7 @@
 // OpenGL ES 2.0 專用頭文件 (Android NDK)
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
-
+#include "VuforiaEngine/VuforiaEngine.h"
 // C++ 標準庫
 #include <mutex>
 #include <chrono>
@@ -19,7 +19,9 @@
 #include "VuforiaEngine/VuforiaEngine.h"
 
 // ========== 日誌宏定義 ==========
+#ifndef LOG_TAG
 #define LOG_TAG "VuforiaRenderingJNI"
+#endif
 #define LOGD_RENDER(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGI_RENDER(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE_RENDER(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)

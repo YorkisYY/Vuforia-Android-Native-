@@ -1,4 +1,5 @@
 #include "VuforiaWrapper.h"
+#include "VuforiaEngine/VuforiaEngine.h"
 //C:\Users\USER\Desktop\IBM-WEATHER-ART-ANDRIOD\app\src\main\cpp\vuforia_wrapper.cpp
 // ==================== 全局變量聲明 ====================
 jobject gAndroidContext = nullptr;
@@ -1002,7 +1003,7 @@ namespace VuforiaWrapper {
         if (sizeof(versionInfo.build) == sizeof(int)) {
             // 如果 build 是整數
             snprintf(versionString, sizeof(versionString), 
-                    "Vuforia Engine %d.%d.%d (Build %d)", 
+                    "Vuforia Engine %d.%d.%d (Build %s)", 
                     versionInfo.major, versionInfo.minor, versionInfo.patch, versionInfo.build);
         } else {
             // 如果 build 是字符串

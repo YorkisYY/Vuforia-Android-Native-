@@ -459,7 +459,7 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_renderFrameWi
         }
         
         // 更新性能統計
-        updatePerformanceStats();
+        VuforiaRendering::updatePerformanceStats();
         
         // 清除緩衝區
         glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
@@ -469,7 +469,7 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_renderFrameWi
         if (g_renderingState.videoBackgroundRenderingEnabled &&  // ✅ 修正：直接使用變數名
             renderState.vbMesh != nullptr &&
             renderState.vbMesh->numVertices > 0) {
-            renderVideoBackgroundWithProperShader(renderState);
+            VuforiaRendering::renderVideoBackgroundWithProperShader(renderState);
         }
         
         // 釋放狀態
