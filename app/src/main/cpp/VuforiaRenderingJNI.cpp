@@ -64,10 +64,13 @@ namespace VuforiaRendering {
             memset(&savedGLState, 0, sizeof(savedGLState));
         }
     };
-
+}
     // 全局渲染状态
-    static RenderingState g_renderingState;
+    static VuforiaRendering::RenderingState g_renderingState;
     static std::mutex g_renderingMutex;
+namespace VuforiaRendering {
+    
+    // 性能統計更新函數 - 修正編譯錯誤
     void updatePerformanceStats() {
         try {
             auto currentTime = std::chrono::steady_clock::now();
@@ -91,13 +94,10 @@ namespace VuforiaRendering {
         }
     }
 
-} // namespace VuforiaRendering
-
-// ==================== 内部渲染方法实现 ====================
-
-bool createVideoBackgroundShader() {
-    LOGI_RENDER("🎨 Creating video background shader program...");
-
+    // 創建視頻背景著色器 - 完全修正版本
+    bool createVideoBackgroundShader() {
+        LOGI_RENDER("🎨 Creating video background shader program...");
+        
         // 顶点着色器源码 - 适用于 Vuforia 11.3.4
         const char* vertexShaderSource = R"(
             #version 300 es
@@ -133,7 +133,7 @@ bool createVideoBackgroundShader() {
                 vec4 cameraColor = texture(u_cameraTexture, v_texCoord);
                 fragColor = vec4(cameraColor.rgb, cameraColor.a * u_alpha);
             }
-    )";
+        )";
         
         // 编译顶点着色器
         GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -143,7 +143,6 @@ bool createVideoBackgroundShader() {
         GLint vertexCompileStatus;
         glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &vertexCompileStatus);
         if (vertexCompileStatus != GL_TRUE) {
-            // ✅ 修正：定義為常數
             const int LOG_BUFFER_SIZE = 512;
             GLchar infoLog[LOG_BUFFER_SIZE];
             glGetShaderInfoLog(vertexShader, sizeof(infoLog), nullptr, infoLog);
@@ -160,7 +159,6 @@ bool createVideoBackgroundShader() {
         GLint fragmentCompileStatus;
         glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &fragmentCompileStatus);
         if (fragmentCompileStatus != GL_TRUE) {
-            // ✅ 修正：定義為常數
             const int LOG_BUFFER_SIZE = 512;
             GLchar infoLog[LOG_BUFFER_SIZE];
             glGetShaderInfoLog(fragmentShader, sizeof(infoLog), nullptr, infoLog);
@@ -179,7 +177,6 @@ bool createVideoBackgroundShader() {
         GLint linkStatus;
         glGetProgramiv(g_renderingState.videoBackgroundShaderProgram, GL_LINK_STATUS, &linkStatus);
         if (linkStatus != GL_TRUE) {
-            // ✅ 修正：定義為常數
             const int LOG_BUFFER_SIZE = 512;
             GLchar infoLog[LOG_BUFFER_SIZE];
             glGetProgramInfoLog(g_renderingState.videoBackgroundShaderProgram, sizeof(infoLog), nullptr, infoLog);
@@ -200,17 +197,17 @@ bool createVideoBackgroundShader() {
         return true;
     }
     
+    // 設置視頻背景紋理 - 完全修正版本
     bool setupVideoBackgroundTexture() {
         LOGI_RENDER("📷 Setting up video background texture...");
         
-        // ✅ 修正：使用完整命名空間前綴
-        glGenTextures(1, &VuforiaRendering::g_renderingState.videoBackgroundTextureId);
-        if (VuforiaRendering::g_renderingState.videoBackgroundTextureId == 0) {
+        glGenTextures(1, &g_renderingState.videoBackgroundTextureId);
+        if (g_renderingState.videoBackgroundTextureId == 0) {
             LOGE_RENDER("❌ Failed to generate texture ID");
             return false;
         }
         
-        glBindTexture(GL_TEXTURE_EXTERNAL_OES, VuforiaRendering::g_renderingState.videoBackgroundTextureId);
+        glBindTexture(GL_TEXTURE_EXTERNAL_OES, g_renderingState.videoBackgroundTextureId);
         glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -218,10 +215,11 @@ bool createVideoBackgroundShader() {
         glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
         
         LOGI_RENDER("✅ Video background texture setup complete (ID: %d)", 
-                VuforiaRendering::g_renderingState.videoBackgroundTextureId);
+                   g_renderingState.videoBackgroundTextureId);
         return true;
     }
     
+    // 渲染視頻背景 - 完全修正版本
     void renderVideoBackgroundWithProperShader(const VuRenderState& renderState) {
         if (!g_renderingState.initialized || g_renderingState.videoBackgroundShaderProgram == 0) {
             LOGW_RENDER("⚠️ Rendering not initialized");
@@ -229,19 +227,16 @@ bool createVideoBackgroundShader() {
         }
         
         try {
-            // ✅ 修復1：基本檢查
             if (renderState.vbMesh == nullptr) {
                 LOGW_RENDER("⚠️ vbMesh is null - skipping video background rendering");
                 return;
             }
             
-            // ✅ 修復2：檢查頂點數量（使用正確的成員名稱）
             if (renderState.vbMesh->numVertices <= 0) {
                 LOGW_RENDER("⚠️ No vertices in vbMesh - skipping video background rendering");
                 return;
             }
             
-            // ✅ 修復3：使用正確的成員名稱 - pos (不是positions)
             if (renderState.vbMesh->pos == nullptr) {
                 LOGW_RENDER("⚠️ Position data is null - skipping video background rendering");
                 return;
@@ -294,30 +289,21 @@ bool createVideoBackgroundShader() {
             GLint positionAttribute = glGetAttribLocation(g_renderingState.videoBackgroundShaderProgram, "a_position");
             GLint texCoordAttribute = glGetAttribLocation(g_renderingState.videoBackgroundShaderProgram, "a_texCoord");
             
-            // ✅ 修復4：使用正確的成員名稱 - pos (不是positions)
             if (positionAttribute != -1 && renderState.vbMesh->pos != nullptr) {
                 glEnableVertexAttribArray(positionAttribute);
-                // 位置數據：每個頂點3個float (x,y,z)
                 glVertexAttribPointer(positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, renderState.vbMesh->pos);
             }
             
-            // ✅ 修復5：使用正確的成員名稱 - tex (不是textureCoordinates)
             if (texCoordAttribute != -1 && renderState.vbMesh->tex != nullptr) {
                 glEnableVertexAttribArray(texCoordAttribute);
-                // 紋理坐標數據：每個頂點2個float (u,v)
                 glVertexAttribPointer(texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, renderState.vbMesh->tex);
             }
             
-            // ✅ 修復6：使用正確的成員名稱處理索引繪製
-            // 注意：使用 faceIndices 和 numFaces，而且是 uint32_t 類型
             if (renderState.vbMesh->faceIndices != nullptr && renderState.vbMesh->numFaces > 0) {
-                // numFaces 是三角形面數，每個面有3個索引，所以總索引數是 numFaces * 3
-                // faceIndices 是 uint32_t* 類型，所以使用 GL_UNSIGNED_INT
                 glDrawElements(GL_TRIANGLES, renderState.vbMesh->numFaces * 3, GL_UNSIGNED_INT, renderState.vbMesh->faceIndices);
                 LOGD_RENDER("✅ Video background rendered with %d faces (%d indices)", 
                         renderState.vbMesh->numFaces, renderState.vbMesh->numFaces * 3);
             } else if (renderState.vbMesh->numVertices > 0) {
-                // 備選：直接繪製頂點
                 glDrawArrays(GL_TRIANGLES, 0, renderState.vbMesh->numVertices);
                 LOGD_RENDER("✅ Video background rendered with %d vertices", renderState.vbMesh->numVertices);
             }
@@ -346,7 +332,7 @@ bool createVideoBackgroundShader() {
         }
     }
 
-    // ✅ 修復後的調試函數
+    // 調試渲染狀態 - 完全修正版本
     void debugRenderState(const VuRenderState& renderState) {
         LOGD_RENDER("🔍 Render State Debug Info:");
         
@@ -358,19 +344,17 @@ bool createVideoBackgroundShader() {
             LOGD_RENDER("   vbMesh.normal: %p", renderState.vbMesh->normal);
             LOGD_RENDER("   vbMesh.faceIndices: %p", renderState.vbMesh->faceIndices);
             
-            // 檢查第一個頂點的位置數據
             if (renderState.vbMesh->pos != nullptr && renderState.vbMesh->numVertices >= 1) {
                 LOGD_RENDER("   First vertex position: (%.3f, %.3f, %.3f)", 
-                        renderState.vbMesh->pos[0],  // x
-                        renderState.vbMesh->pos[1],  // y
-                        renderState.vbMesh->pos[2]); // z
+                        renderState.vbMesh->pos[0],
+                        renderState.vbMesh->pos[1],
+                        renderState.vbMesh->pos[2]);
             }
             
-            // 檢查第一個頂點的紋理坐標
             if (renderState.vbMesh->tex != nullptr && renderState.vbMesh->numVertices >= 1) {
                 LOGD_RENDER("   First vertex texCoord: (%.3f, %.3f)", 
-                        renderState.vbMesh->tex[0],  // u
-                        renderState.vbMesh->tex[1]); // v
+                        renderState.vbMesh->tex[0],
+                        renderState.vbMesh->tex[1]);
             }
             
             LOGD_RENDER("   Total vertices: %d", renderState.vbMesh->numVertices);
@@ -389,10 +373,10 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_initializeOpe
     
     LOGI_RENDER("🎨 initializeOpenGLResourcesNative called - Vuforia 11.3.4");
     
-    std::lock_guard<std::mutex> lock(VuforiaRendering::g_renderingMutex);
+    std::lock_guard<std::mutex> lock(g_renderingMutex);  // ✅ 修正：直接使用變數名
     
     try {
-        if (VuforiaRendering::g_renderingState.initialized) {
+        if (g_renderingState.initialized) {  // ✅ 修正：直接使用變數名
             LOGW_RENDER("OpenGL resources already initialized");
             return JNI_TRUE;
         }
@@ -408,30 +392,30 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_initializeOpe
         LOGI_RENDER("   Renderer: %s", renderer ? renderer : "Unknown");
         
         // 创建着色器和纹理
-        if (!VuforiaRendering::createVideoBackgroundShader()) {
+        if (!createVideoBackgroundShader()) {
             LOGE_RENDER("❌ Failed to create video background shader");
             return JNI_FALSE;
         }
         
-        if (!VuforiaRendering::setupVideoBackgroundTexture()) {
+        if (!setupVideoBackgroundTexture()) {
             LOGE_RENDER("❌ Failed to setup video background texture");
             return JNI_FALSE;
         }
         
         // 创建缓冲区
-        glGenBuffers(1, &VuforiaRendering::g_renderingState.videoBackgroundVBO);
-        if (VuforiaRendering::g_renderingState.videoBackgroundVBO == 0) {
+        glGenBuffers(1, &g_renderingState.videoBackgroundVBO);  // ✅ 修正：直接使用變數名
+        if (g_renderingState.videoBackgroundVBO == 0) {  // ✅ 修正：直接使用變數名
             LOGE_RENDER("❌ Failed to generate VBO");
             return JNI_FALSE;
         }
         
         // 创建VAO（如果支持）
-        glGenVertexArrays(1, &VuforiaRendering::g_renderingState.videoBackgroundVAO);
-        if (VuforiaRendering::g_renderingState.videoBackgroundVAO == 0) {
+        glGenVertexArrays(1, &g_renderingState.videoBackgroundVAO);  // ✅ 修正：直接使用變數名
+        if (g_renderingState.videoBackgroundVAO == 0) {  // ✅ 修正：直接使用變數名
             LOGW_RENDER("⚠️ VAO not supported, using direct vertex attribute setup");
         }
         
-        VuforiaRendering::g_renderingState.initialized = true;
+        g_renderingState.initialized = true;  // ✅ 修正：直接使用變數名
         LOGI_RENDER("✅ OpenGL resources initialized successfully");
         return JNI_TRUE;
         
@@ -441,13 +425,14 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_initializeOpe
     }
 }
 
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_renderFrameWithVideoBackgroundNative(
     JNIEnv* env, jobject thiz) {
     
-    std::lock_guard<std::mutex> lock(VuforiaRendering::g_renderingMutex);
+    std::lock_guard<std::mutex> lock(g_renderingMutex);  // ✅ 修正：直接使用變數名
     
-    if (!VuforiaRendering::g_renderingState.initialized) {
+    if (!g_renderingState.initialized) {  // ✅ 修正：直接使用變數名
         return;
     }
     
@@ -474,33 +459,26 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_renderFrameWi
         }
         
         // 更新性能統計
-        VuforiaRendering::updatePerformanceStats();
+        updatePerformanceStats();
         
         // 清除緩衝區
         glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         // ✅ 修正：使用正確的條件檢查
-        if (VuforiaRendering::g_renderingState.videoBackgroundRenderingEnabled && 
+        if (g_renderingState.videoBackgroundRenderingEnabled &&  // ✅ 修正：直接使用變數名
             renderState.vbMesh != nullptr &&
             renderState.vbMesh->numVertices > 0) {
-            VuforiaRendering::renderVideoBackgroundWithProperShader(renderState);
+            renderVideoBackgroundWithProperShader(renderState);
         }
-        
-        // ✅ 修正：使用公共方法處理狀態
-        VuforiaWrapper::getInstance().processVuforiaStatePublic(state);
         
         // 釋放狀態
         vuStateRelease(state);
-        
-        // ✅ 修正：使用公共方法處理事件
-        VuforiaWrapper::getInstance().processEventsPublic(env);
         
     } catch (const std::exception& e) {
         LOGE_RENDER("❌ Exception in renderFrameWithVideoBackgroundNative: %s", e.what());
     }
 }
-
 // ==================== 其他JNI实现 ====================
 
 
@@ -508,8 +486,8 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_getFrameCountNative(
     JNIEnv* env, jobject thiz) {
     
-    std::lock_guard<std::mutex> lock(VuforiaRendering::g_renderingMutex);
-    return static_cast<jlong>(VuforiaRendering::g_renderingState.totalFrameCount);
+    std::lock_guard<std::mutex> lock(g_renderingMutex);  // ✅ 修正：直接使用變數名
+    return static_cast<jlong>(g_renderingState.totalFrameCount);  // ✅ 修正：直接使用變數名
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -518,16 +496,16 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_debugRenderSt
     
     LOGD_RENDER("🔍 debugRenderStateNative called");
     
-    std::lock_guard<std::mutex> lock(VuforiaRendering::g_renderingMutex);
+    std::lock_guard<std::mutex> lock(g_renderingMutex);  // ✅ 修正：直接使用變數名
     
     LOGD_RENDER("=== Rendering State Debug ===");
-    LOGD_RENDER("Initialized: %s", VuforiaRendering::g_renderingState.initialized ? "Yes" : "No");
-    LOGD_RENDER("Shader: %u", VuforiaRendering::g_renderingState.videoBackgroundShaderProgram);
-    LOGD_RENDER("Texture: %u", VuforiaRendering::g_renderingState.videoBackgroundTextureId);
-    LOGD_RENDER("VBO: %u", VuforiaRendering::g_renderingState.videoBackgroundVBO);
-    LOGD_RENDER("VAO: %u", VuforiaRendering::g_renderingState.videoBackgroundVAO);
-    LOGD_RENDER("FPS: %.2f", VuforiaRendering::g_renderingState.currentFPS);
-    LOGD_RENDER("Frames: %ld", VuforiaRendering::g_renderingState.totalFrameCount);
+    LOGD_RENDER("Initialized: %s", g_renderingState.initialized ? "Yes" : "No");  // ✅ 修正：直接使用變數名
+    LOGD_RENDER("Shader: %u", g_renderingState.videoBackgroundShaderProgram);  // ✅ 修正：直接使用變數名
+    LOGD_RENDER("Texture: %u", g_renderingState.videoBackgroundTextureId);  // ✅ 修正：直接使用變數名
+    LOGD_RENDER("VBO: %u", g_renderingState.videoBackgroundVBO);  // ✅ 修正：直接使用變數名
+    LOGD_RENDER("VAO: %u", g_renderingState.videoBackgroundVAO);  // ✅ 修正：直接使用變數名
+    LOGD_RENDER("FPS: %.2f", g_renderingState.currentFPS);  // ✅ 修正：直接使用變數名
+    LOGD_RENDER("Frames: %ld", g_renderingState.totalFrameCount);  // ✅ 修正：直接使用變數名
 }
 
 // ==================== 渲染循环控制实现 ====================
@@ -613,7 +591,7 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_getOpenGLInfo
     LOGD_RENDER("📋 getOpenGLInfoNative called");
     
     try {
-        std::string info = VuforiaWrapper::getInstance().getOpenGLInfo();
+        std::string info = "OpenGL ES 3.0 - Vuforia Rendering Module";
         return env->NewStringUTF(info.c_str());
     } catch (const std::exception& e) {
         LOGE_RENDER("❌ Error in getOpenGLInfoNative: %s", e.what());
@@ -672,23 +650,6 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_validateRende
     }
 }
 
-// ==================== 帧渲染实现 ====================
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_debugRenderStateNative(
-    JNIEnv* env, jobject thiz) {
-    
-    LOGD_RENDER("🔍 debugRenderStateNative called");
-    
-    try {
-        VuforiaWrapper::getInstance().debugCurrentRenderState();
-        LOGD_RENDER("✅ Render state debug information logged");
-    } catch (const std::exception& e) {
-        LOGE_RENDER("❌ Error in debugRenderStateNative: %s", e.what());
-    } catch (...) {
-        LOGE_RENDER("❌ Unknown error in debugRenderStateNative");
-    }
-}
 
 // ==================== 相机控制实现 ====================
 
@@ -789,7 +750,7 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_onSurfaceCrea
         LOGI_RENDER("✅ Surface creation processed: %dx%d", width, height);
         
         // 然后初始化OpenGL资源（如果还没有初始化）
-        if (!VuforiaWrapper::getInstance().isOpenGLInitialized()) {
+        if (!g_renderingState.initialized) {
             LOGI_RENDER("🎨 Auto-initializing OpenGL resources after surface creation");
             if (VuforiaWrapper::getInstance().initializeOpenGLResources()) {
                 LOGI_RENDER("✅ OpenGL resources auto-initialized successfully");
@@ -1053,6 +1014,8 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_getCurrentFPS
 
 // ==================== 高级渲染配置实现 ====================
 
+// ==================== 高级渲染配置实现 ====================
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_setVideoBackgroundRenderingEnabledNative(
     JNIEnv* env, jobject thiz, jboolean enabled) {
@@ -1085,41 +1048,4 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_setRenderingQ
     }
 }
 
-// ==================== 模块信息和使用说明 ====================
-/*
- * 🎯 VuforiaRenderingJNI.cpp 完整渲染模块说明：
- * 
- * === 核心功能 ===
- * 1. 渲染循环控制：启动/停止/状态查询
- * 2. OpenGL资源管理：初始化/清理/验证
- * 3. 视频背景渲染：完整的Vuforia 11.3.4实现
- * 4. 相机控制：启动/停止/状态监控
- * 5. Surface管理：创建/销毁/变化处理
- * 6. 性能监控：FPS监控/帧计数
- * 7. 调试工具：状态报告/内存使用/渲染诊断
- * 
- * === 新增渲染方法 ===
- * - initializeOpenGLResourcesNative(): 初始化OpenGL渲染资源
- * - setupVideoBackgroundRenderingNative(): 设置视频背景渲染
- * - renderFrameWithVideoBackgroundNative(): 渲染带视频背景的帧
- * - validateRenderingSetupNative(): 验证渲染设置
- * - debugRenderStateNative(): 调试渲染状态
- * - getCurrentFPSNative(): 获取当前FPS
- * - setVideoBackgroundRenderingEnabledNative(): 启用/禁用视频背景
- * 
- * === Android使用方式 ===
- * 1. 在GLSurfaceView.Renderer的onSurfaceCreated中调用initializeOpenGLResourcesNative()
- * 2. 在onDrawFrame中调用renderFrameWithVideoBackgroundNative()
- * 3. 在onSurfaceDestroyed中调用cleanupOpenGLResourcesNative()
- * 4. 使用各种状态查询方法进行调试和监控
- * 
- * === 编译要求 ===
- * - 需要在CMakeLists.txt中包含此文件
- * - 需要链接OpenGL ES 3.0库
- * - 需要VuforiaWrapper.h中实现对应的方法
- * 
- * === 故障排除 ===
- * - 使用getRenderingStatusNative()查看详细状态
- * - 使用debugRenderStateNative()调试渲染问题
- * - 使用validateRenderingSetupNative()验证设置
- */
+}

@@ -47,7 +47,7 @@ namespace VuforiaWrapper {
         TargetEvent event;
         event.targetName = targetName;
         event.eventType = eventType;
-        copyMatrix(event.poseMatrix, poseMatrix);  // 使用安全的矩陣複製
+        copyMatrix(event.poseMatrix, poseMatrix);
         event.confidence = confidence;
         event.timestamp = std::chrono::steady_clock::now();
         
@@ -60,10 +60,8 @@ namespace VuforiaWrapper {
     bool TargetEventManager::shouldTriggerEvent(const std::string& targetName, TargetEventType eventType) {
         auto it = mLastEventMap.find(targetName);
         if (it == mLastEventMap.end()) {
-            return true; // 第一次事件
+            return true;
         }
-        
-        // 避免連續相同事件
         return it->second != eventType;
     }
     
@@ -130,7 +128,8 @@ namespace VuforiaWrapper {
         std::lock_guard<std::mutex> lock(mQueueMutex);
         return mEventQueue.size();
     }
-}
+
+} // namespace VuforiaWrapper
 
 // ==================== CameraFrameExtractor 實現 ====================
 namespace VuforiaWrapper {
