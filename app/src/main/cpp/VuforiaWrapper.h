@@ -21,7 +21,6 @@
 #include <GLES3/gl3.h>       // OpenGL ES 3.0
 #include <GLES2/gl2ext.h>    // OpenGL扩展
 #include <EGL/egl.h>
-
 // ==================== Vuforia Engine 11 核心頭文件 ====================
 #include <VuforiaEngine/VuforiaEngine.h>
 
@@ -299,7 +298,8 @@ namespace VuforiaWrapper {
         
         // 同步對象
         mutable std::mutex mEngineMutex;
-        
+    bool isOpenGLInitialized() const { return false; }
+    std::string getOpenGLInfo() const { return "Implemented in rendering module"; }    
     public:
         VuforiaEngineWrapper();
         ~VuforiaEngineWrapper();
@@ -483,9 +483,7 @@ namespace VuforiaWrapper {
         // OpenGL资源管理
         bool initializeOpenGLResources();
         void cleanupOpenGLResources();
-        bool isOpenGLInitialized() const;
         bool validateOpenGLSetup() const;
-        std::string getOpenGLInfo() const;
         
         // 视频背景渲染
         bool setupVideoBackgroundRendering();
@@ -550,17 +548,17 @@ namespace VuforiaWrapper {
         // ===== 新增的渲染相关私有方法 =====
         
         // 渲染相关私有方法
-        void renderCameraBackgroundSimple(const VuState* state);
-        void renderVideoBackgroundMesh(const VuRenderState& renderState);
-        
+        void renderCameraBackgroundSimple(const VuState* state);        
         // 性能统计更新
         void updatePerformanceStats();
         
         // 渲染状态调试
         void debugRenderState(const VuRenderState& renderState) const;
+    public:
+        // 新增的公共方法 - 解決 VuMesh API 相關編譯錯誤
+        void renderVideoBackgroundMesh(const VuRenderState& renderState);
+        VuEngine* getEngine() const { return mEngine; }
     };
-}
-
 // ==================== 全局工具函數聲明 ====================
 namespace VuforiaWrapper {
     // 矩陣轉換工具
