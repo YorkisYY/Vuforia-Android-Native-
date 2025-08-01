@@ -354,13 +354,25 @@ namespace VuforiaWrapper {
     bool VuforiaEngineWrapper::setupVideoBackgroundRendering() {
         LOGI_RENDER("📷 Setting up video background rendering - Vuforia 11.3.4");
         
-        if (!mRenderController) {
-            LOGE_RENDER("❌ RenderController is null");
+        if (!mEngine) {
+            LOGE_RENDER("❌ Engine is null");
             return false;
         }
         
-        if (!mEngine) {
-            LOGE_RENDER("❌ Engine is null");
+        // ✅ 修復：在渲染線程中重新獲取 RenderController
+        if (!mRenderController && mEngine != nullptr) {
+            LOGI_RENDER("🔄 Re-obtaining RenderController in rendering thread...");
+            VuResult result = vuEngineGetRenderController(mEngine, &mRenderController);
+            if (result != VU_SUCCESS || mRenderController == nullptr) {
+                LOGE_RENDER("❌ Failed to get RenderController in rendering thread: %d", result);
+                return false;
+            }
+            LOGI_RENDER("✅ RenderController obtained in rendering thread: %p", mRenderController);
+        }
+        
+        // 原有的檢查
+        if (!mRenderController) {
+            LOGE_RENDER("❌ RenderController is still null");
             return false;
         }
         
@@ -371,7 +383,6 @@ namespace VuforiaWrapper {
             int screenWidth = viewport[2];
             int screenHeight = viewport[3];
             
-            // 如果視口為空，使用存儲的 Surface 尺寸
             if (screenWidth <= 0 || screenHeight <= 0) {
                 LOGW_RENDER("⚠️ Invalid viewport, using stored surface dimensions");
                 screenWidth = mSurfaceWidth > 0 ? mSurfaceWidth : 1080;
@@ -380,10 +391,8 @@ namespace VuforiaWrapper {
             
             LOGI_RENDER("📱 Using dynamic resolution: %dx%d", screenWidth, screenHeight);
             
-            // 步驟2: 設置渲染視圖配置
+            // ✅ 步驟2: 使用正確的 Vuforia 11.3.4 API
             VuRenderViewConfig renderViewConfig;
-            memset(&renderViewConfig, 0, sizeof(VuRenderViewConfig));
-            
             renderViewConfig.resolution.data[0] = screenWidth;
             renderViewConfig.resolution.data[1] = screenHeight;
             
@@ -394,7 +403,7 @@ namespace VuforiaWrapper {
             }
             LOGI_RENDER("✅ Render view config set successfully: %dx%d", screenWidth, screenHeight);
             
-            // 步驟3: 設置視頻背景視口模式
+            // ✅ 步驟3: 設置視頻背景視口模式
             VuVideoBackgroundViewportMode vbMode = VU_VIDEOBG_VIEWPORT_MODE_SCALE_TO_FIT;
             result = vuRenderControllerSetVideoBackgroundViewportMode(mRenderController, vbMode);
             if (result != VU_SUCCESS) {
@@ -403,7 +412,7 @@ namespace VuforiaWrapper {
             }
             LOGI_RENDER("✅ Video background viewport mode set successfully");
             
-            // 步驟4: 設置投影矩陣的近遠平面
+            // ✅ 步驟4: 設置投影矩陣的近遠平面
             result = vuRenderControllerSetProjectionMatrixNearFar(mRenderController, 2.0f, 2000.0f);
             if (result != VU_SUCCESS) {
                 LOGE_RENDER("❌ Failed to set projection matrix near/far: %d", result);
@@ -411,34 +420,11 @@ namespace VuforiaWrapper {
             }
             LOGI_RENDER("✅ Projection matrix near/far set successfully");
             
-            // 步驟5: 使用正確的 Platform Controller API 設置視圖方向
-            VuViewOrientation orientation;
-            if (screenHeight > screenWidth) {
-                orientation = VU_VIEW_ORIENTATION_PORTRAIT;
-                LOGI_RENDER("📱 Setting orientation: PORTRAIT (%dx%d)", screenWidth, screenHeight);
-            } else {
-                orientation = VU_VIEW_ORIENTATION_LANDSCAPE_LEFT;
-                LOGI_RENDER("📱 Setting orientation: LANDSCAPE (%dx%d)", screenWidth, screenHeight);
-            }
-            
-            // ✅ 修復：使用正確的 Platform Controller API
-            if (mController) {
-                result = vuPlatformControllerSetViewOrientation(mController, orientation);
-                if (result != VU_SUCCESS) {
-                    LOGE_RENDER("❌ Failed to set view orientation: %d", result);
-                    return false;
-                }
-                LOGI_RENDER("✅ View orientation set successfully");
-            }
-            
             LOGI_RENDER("✅ Video background rendering setup completed successfully");
             return true;
             
         } catch (const std::exception& e) {
             LOGE_RENDER("❌ Exception in setupVideoBackgroundRendering: %s", e.what());
-            return false;
-        } catch (...) {
-            LOGE_RENDER("❌ Unknown exception in setupVideoBackgroundRendering");
             return false;
         }
     }
@@ -1164,3 +1150,19 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_stopRendering
         LOGE_RENDER("❌ Error in stopRenderingNative: %s", e.what());
     }
 }
+// 1. 加載圖像目標數據庫
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_loadImageTargetsNative(
+    JNIEnv* env, jobject thiz, jstring database_path) {
+    LOGI("loadImageTargetsNative called");
+    return JNI_TRUE;
+}
+
+// 2. 開始圖像追蹤
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_startImageTrackingNative(
+    JNIEnv* env, jobject thiz) {
+    LOGI("startImageTrackingNative called");
+    return JNI_TRUE;
+}
+

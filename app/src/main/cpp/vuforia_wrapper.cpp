@@ -417,21 +417,25 @@ namespace VuforiaWrapper {
         return true;
 }
     bool VuforiaEngineWrapper::setupControllers() {
-        // ✅ 在 Vuforia 11.3.4 中，不需要手動獲取 RenderController
-        // 渲染控制是通過全局函數實現的，而不是控制器對象
-        
-        mController = reinterpret_cast<VuController*>(mEngine);
-        if (mController == nullptr) {
-            LOGE("Failed to get main controller");
+        if (!mEngine) {
+            LOGE("Engine not available");
             return false;
         }
         
-        // ✅ RenderController 在 11.3.4 中通過全局函數使用
-        mRenderController = nullptr;  // 不需要獨立的控制器對象
+        // ✅ 修正：使用 VuController* 而不是 VuRenderController*
+        VuResult result = vuEngineGetRenderController(mEngine, &mController);
+        if (result != VU_SUCCESS || mController == nullptr) {
+            LOGE("❌ Failed to get RenderController: %d", result);
+            return false;
+        }
+        
+        LOGI("✅ RenderController obtained successfully: %p", mController);
+        
+        // ✅ 其他控制器在 11.3.4 中可能不需要
+        mRenderController = nullptr;  // 這個可能不需要了
         mCameraController = nullptr;
         mRecorderController = nullptr;
         
-        LOGI("Controllers setup completed (Vuforia 11.3.4 style)");
         return true;
     }
     
