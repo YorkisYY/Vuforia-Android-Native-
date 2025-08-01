@@ -258,7 +258,6 @@ namespace VuforiaWrapper {
         int mSurfaceWidth;
         int mSurfaceHeight;
         bool mSurfaceReady;
-        
         // ✅ 相機狀態
         bool mCameraActive;
         
@@ -369,7 +368,18 @@ namespace VuforiaWrapper {
         // ==================== 工具方法 ====================
         std::string getVuforiaVersion() const;
         int getVuforiaStatus() const;
+            // ✅ 新增：設置Surface尺寸的方法
+        void setSurfaceDimensions(int width, int height) {
+            mSurfaceWidth = width;
+            mSurfaceHeight = height;
+            LOGI("📱 Surface dimensions stored: %dx%d", width, height);
+        }
         
+        // ✅ 新增：獲取Surface尺寸的方法
+        void getSurfaceDimensions(int& width, int& height) const {
+            width = mSurfaceWidth;
+            height = mSurfaceHeight;
+        }
         // ==================== 渲染循环控制方法（解决编译错误的关键）====================
         /**
          * 启动渲染循环
@@ -666,5 +676,6 @@ namespace VuforiaWrapper {
     // 銷毀全局實例（在應用程序退出時調用）
     void destroyInstance();
 }
+
 
 #endif // VUFORIA_WRAPPER_H

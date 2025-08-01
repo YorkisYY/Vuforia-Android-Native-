@@ -22,21 +22,17 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
     private static final int REQUEST_CODE_PERMISSIONS = 10;
     private static final String[] REQUIRED_PERMISSIONS = new String[]{Manifest.permission.CAMERA};
     
-    // 狀態管理
+    // 狀態管理 - 簡化後的狀態變量
     private volatile boolean arInitializationRequested = false;
     private volatile boolean vuforiaInitialized = false;
     private volatile boolean openglInitialized = false;
-    
+    private volatile boolean surfaceReady = false;
 
     private VuforiaCoreManager vuforiaCoreManager;
-
     private FrameLayout cameraContainer;
-    private GLSurfaceView glSurfaceView;  // 替代 SurfaceView
+    private GLSurfaceView glSurfaceView;
     
     static {
-        // 移除 Filament 初始化
-        // Filament.init();
-        
         // 只載入 Vuforia 庫
         try {
             System.loadLibrary("Vuforia");
@@ -84,10 +80,6 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
             vuforiaCoreManager = new VuforiaCoreManager(this);
             Log.d(TAG, "✅ VuforiaCoreManager created");
             
-            // 移除 Filament 和 GLBReader
-            // filamentRenderer = new FilamentRenderer(this);
-            // glbReader = new GLBReader(this);
-            
         } catch (Exception e) {
             Log.e(TAG, "❌ Error initializing core components", e);
             showError("核心組件初始化失敗");
@@ -105,17 +97,19 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                 return;
             }
             
-            // 🔥 關鍵變更：創建 GLSurfaceView
+            // ✅ 修復：創建 GLSurfaceView 並改回連續渲染
             glSurfaceView = new GLSurfaceView(this);
             glSurfaceView.setEGLContextClientVersion(3); // OpenGL ES 3.0
             glSurfaceView.setRenderer(this); // MainActivity 實現 GLSurfaceView.Renderer
+            
+            // ✅ 關鍵修復：改回 CONTINUOUSLY 連續渲染模式
             glSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
             
             // 將 GLSurfaceView 添加到容器
             cameraContainer.removeAllViews();
             cameraContainer.addView(glSurfaceView);
             
-            Log.d(TAG, "✅ GLSurfaceView created and added to container");
+            Log.d(TAG, "✅ GLSurfaceView created with CONTINUOUSLY render mode");
             
         } catch (Exception e) {
             Log.e(TAG, "❌ Error initializing GL views", e);
@@ -128,10 +122,16 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
         Log.d(TAG, "🎨 OpenGL Surface Created");
+        surfaceReady = true;
+        
+        // ✅ 修復：設置基本 OpenGL 狀態
+        setupBasicOpenGL();
         
         // 如果 Vuforia 已經初始化，設置 OpenGL
         if (vuforiaInitialized && vuforiaCoreManager != null) {
             setupVuforiaOpenGL();
+        } else {
+            Log.d(TAG, "⏳ Vuforia not ready yet, will setup when initialized");
         }
     }
     
@@ -145,9 +145,10 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                 vuforiaCoreManager.handleSurfaceChanged(width, height);
                 
                 // 如果還沒設置 OpenGL，現在設置
-                if (!openglInitialized) {
+                if (vuforiaInitialized && !openglInitialized) {
                     setupVuforiaOpenGL();
                 }
+                
             } catch (Exception e) {
                 Log.e(TAG, "Error handling surface change", e);
             }
@@ -156,14 +157,29 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
     
     @Override
     public void onDrawFrame(GL10 gl) {
-        // 🔥 關鍵：每一幀都調用 Vuforia 渲染
+        // ✅ 關鍵修復：移除所有複雜檢查，直接渲染
+        android.opengl.GLES20.glClear(android.opengl.GLES20.GL_COLOR_BUFFER_BIT | android.opengl.GLES20.GL_DEPTH_BUFFER_BIT);
+        android.opengl.GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        
+        // 執行實際渲染
         if (vuforiaCoreManager != null && vuforiaInitialized && openglInitialized) {
             try {
-                // 這會渲染相機背景 + AR 內容
                 vuforiaCoreManager.renderFrameSafely();
             } catch (Exception e) {
                 Log.e(TAG, "Rendering error: " + e.getMessage());
             }
+        }
+    }
+    
+    // ✅ 修復：簡化基本 OpenGL 設置
+    private void setupBasicOpenGL() {
+        Log.d(TAG, "🎨 Setting up basic OpenGL...");
+        try {
+            // 基本的 OpenGL 設置
+            android.opengl.GLES20.glEnable(android.opengl.GLES20.GL_DEPTH_TEST);
+            Log.d(TAG, "✅ Basic OpenGL setup completed");
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error setting up basic OpenGL", e);
         }
     }
     
@@ -173,24 +189,47 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
         Log.d(TAG, "🎨 Setting up Vuforia OpenGL rendering...");
         
         try {
-                    if (vuforiaCoreManager.isOpenGLInitialized()) {
-                        Log.d(TAG, "✅ OpenGL already initialized");
-                        openglInitialized = true;
+            // ✅ 關鍵修復：只在 GL 線程中執行 OpenGL 相關操作
+            if (glSurfaceView != null && vuforiaCoreManager != null) {
+                
+                glSurfaceView.queueEvent(() -> {
+                    try {
+                        // ✅ 修復：只在 GL 線程中進行 OpenGL 操作
+                        boolean resourcesReady = vuforiaCoreManager.initializeOpenGLResources();
                         
-                        Log.d(TAG, "🎉 Vuforia OpenGL setup completed successfully!");
+                        Log.d(TAG, "🎨 OpenGL resources initialization: " + resourcesReady);
                         
-                        // 開始目標檢測
-                        startARSession();
-                        
-                    } else {
-                        Log.d(TAG, "⏳ OpenGL not ready yet, will initialize when surface is ready");
-                        // 不需要做任何事，OpenGL 會在 GLSurfaceView 準備好時自動初始化
+                        if (resourcesReady) {
+                            // 切換回主線程更新 UI 狀態
+                            runOnUiThread(() -> {
+                                openglInitialized = true;
+                                Log.d(TAG, "🎉 Vuforia OpenGL setup completed successfully!");
+                                
+                                // 開始 AR 會話
+                                startARSession();
+                            });
+                        } else {
+                            runOnUiThread(() -> {
+                                Log.e(TAG, "❌ Failed to initialize OpenGL resources in GL context");
+                                showError("OpenGL 資源初始化失敗");
+                            });
+                        }
+                    } catch (Exception e) {
+                        runOnUiThread(() -> {
+                            Log.e(TAG, "❌ Error in GL context operations: " + e.getMessage());
+                        });
                     }
-                } catch (Exception e) {
-                    Log.e(TAG, "❌ Error checking Vuforia OpenGL status", e);
-                }
+                });
+                
+            } else {
+                Log.e(TAG, "❌ GLSurfaceView or VuforiaCoreManager is null");
             }
-    
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error setting up Vuforia OpenGL", e);
+            showError("Vuforia OpenGL 設置失敗: " + e.getMessage());
+        }
+    }
+
     private void setupCallbacks() {
         Log.d(TAG, "Setting up callbacks...");
         
@@ -209,7 +248,12 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                         // 加载模型
                         loadGLBModel();
                         
-                        // OpenGL 設置會在 onSurfaceChanged 中進行
+                        // ✅ 引擎啟動後檢查 Surface 是否準備好
+                        if (surfaceReady) {
+                            runOnUiThread(() -> {
+                                setupVuforiaOpenGL();
+                            });
+                        }
                         
                     } else {
                         Log.e(TAG, "❌ Failed to start Vuforia Engine");
@@ -222,6 +266,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                 }
             }
         });
+
         
         // 模型載入回調
         vuforiaCoreManager.setModelLoadingCallback(new VuforiaCoreManager.ModelLoadingCallback() {
@@ -234,7 +279,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
             }
         });
         
-        // 目標檢測回調
+        // ✅ 修復：簡化目標檢測回調
         vuforiaCoreManager.setTargetDetectionCallback(new VuforiaCoreManager.TargetDetectionCallback() {
             @Override
             public void onTargetFound(String targetName) {
@@ -254,8 +299,8 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
             
             @Override
             public void onTargetTracking(String targetName, float[] modelViewMatrix) {
-                // 目標追蹤更新會在 native 層處理
-                // Log.d(TAG, "📡 Target tracking: " + targetName);
+                // ✅ 修復：移除額外的渲染請求，讓連續渲染自動處理
+                // 連續渲染模式下不需要手動請求渲染
             }
         });
         
@@ -287,7 +332,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
         if (!arInitializationRequested) {
             arInitializationRequested = true;
             
-            // 延遲初始化
+            // ✅ 修復：減少延遲時間，加快初始化
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 if (!vuforiaInitialized) {
                     Log.d(TAG, "🚀 Starting AR initialization");
@@ -295,7 +340,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                 } else {
                     Log.d(TAG, "✅ Vuforia initialized while waiting");
                 }
-            }, 1000); // 減少延遲時間
+            }, 500); // 減少延遲時間到 500ms
         }
     }
     
@@ -336,6 +381,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                 });
                 
                 Log.d(TAG, "🎉 AR session started successfully!");
+                
             } else {
                 Log.e(TAG, "❌ Failed to start target detection");
                 showError("目標檢測啟動失敗");
@@ -409,7 +455,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
         super.onResume();
         Log.d(TAG, "▶️ onResume - Resuming AR components");
         
-        // 恢復 GLSurfaceView
+        // ✅ 修復：簡化 onResume
         if (glSurfaceView != null) {
             glSurfaceView.onResume();
         }
@@ -436,7 +482,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
         super.onPause();
         Log.d(TAG, "⏸️ onPause - Pausing AR components");
         
-        // 暫停 GLSurfaceView
+        // ✅ 修復：簡化 onPause
         if (glSurfaceView != null) {
             glSurfaceView.onPause();
         }
@@ -456,6 +502,11 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
     protected void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "🗑️ onDestroy - Cleaning up AR resources");
+        
+        // ✅ 修復：簡化清理邏輯
+        surfaceReady = false;
+        openglInitialized = false;
+        vuforiaInitialized = false;
         
         // 清理 Vuforia
         if (vuforiaCoreManager != null) {

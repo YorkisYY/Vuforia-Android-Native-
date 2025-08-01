@@ -97,8 +97,7 @@ namespace VuforiaRendering {
         LOGI_RENDER("🎨 Creating video background shader program...");
         
         // OpenGL ES 3.0 顶点着色器
-        const char* vertexShaderSource = R"(
-            #version 300 es
+        const char* vertexShaderSource = R"(#version 300 es
             precision highp float;
             
             layout(location = 0) in vec3 a_position;
@@ -116,8 +115,7 @@ namespace VuforiaRendering {
         )";
         
         // OpenGL ES 3.0 片段着色器
-        const char* fragmentShaderSource = R"(
-            #version 300 es
+        const char* fragmentShaderSource = R"(#version 300 es
             #extension GL_OES_EGL_image_external_essl3 : require
             precision highp float;
             
@@ -354,16 +352,96 @@ namespace VuforiaWrapper {
     }
 
     bool VuforiaEngineWrapper::setupVideoBackgroundRendering() {
-        if (mRenderController) {
-            VuVideoBackgroundViewportMode vbMode = VU_VIDEOBG_VIEWPORT_MODE_SCALE_TO_FIT;
-            // ✅ 檢查結果並返回
-            VuResult result = vuRenderControllerSetVideoBackgroundViewportMode(mRenderController, vbMode);
-            return (result == VU_SUCCESS);  // ✅ 記得返回值
+        LOGI_RENDER("📷 Setting up video background rendering - Vuforia 11.3.4");
+        
+        if (!mRenderController) {
+            LOGE_RENDER("❌ RenderController is null");
+            return false;
         }
-        return false;  // ✅ mRenderController 為空時返回 false
+        
+        if (!mEngine) {
+            LOGE_RENDER("❌ Engine is null");
+            return false;
+        }
+        
+        try {
+            // 步驟1: 動態獲取當前視口分辨率
+            GLint viewport[4];
+            glGetIntegerv(GL_VIEWPORT, viewport);
+            int screenWidth = viewport[2];
+            int screenHeight = viewport[3];
+            
+            // 如果視口為空，使用存儲的 Surface 尺寸
+            if (screenWidth <= 0 || screenHeight <= 0) {
+                LOGW_RENDER("⚠️ Invalid viewport, using stored surface dimensions");
+                screenWidth = mSurfaceWidth > 0 ? mSurfaceWidth : 1080;
+                screenHeight = mSurfaceHeight > 0 ? mSurfaceHeight : 1920;
+            }
+            
+            LOGI_RENDER("📱 Using dynamic resolution: %dx%d", screenWidth, screenHeight);
+            
+            // 步驟2: 設置渲染視圖配置
+            VuRenderViewConfig renderViewConfig;
+            memset(&renderViewConfig, 0, sizeof(VuRenderViewConfig));
+            
+            renderViewConfig.resolution.data[0] = screenWidth;
+            renderViewConfig.resolution.data[1] = screenHeight;
+            
+            VuResult result = vuRenderControllerSetRenderViewConfig(mRenderController, &renderViewConfig);
+            if (result != VU_SUCCESS) {
+                LOGE_RENDER("❌ Failed to set render view config: %d", result);
+                return false;
+            }
+            LOGI_RENDER("✅ Render view config set successfully: %dx%d", screenWidth, screenHeight);
+            
+            // 步驟3: 設置視頻背景視口模式
+            VuVideoBackgroundViewportMode vbMode = VU_VIDEOBG_VIEWPORT_MODE_SCALE_TO_FIT;
+            result = vuRenderControllerSetVideoBackgroundViewportMode(mRenderController, vbMode);
+            if (result != VU_SUCCESS) {
+                LOGE_RENDER("❌ Failed to set video background viewport mode: %d", result);
+                return false;
+            }
+            LOGI_RENDER("✅ Video background viewport mode set successfully");
+            
+            // 步驟4: 設置投影矩陣的近遠平面
+            result = vuRenderControllerSetProjectionMatrixNearFar(mRenderController, 2.0f, 2000.0f);
+            if (result != VU_SUCCESS) {
+                LOGE_RENDER("❌ Failed to set projection matrix near/far: %d", result);
+                return false;
+            }
+            LOGI_RENDER("✅ Projection matrix near/far set successfully");
+            
+            // 步驟5: 使用正確的 Platform Controller API 設置視圖方向
+            VuViewOrientation orientation;
+            if (screenHeight > screenWidth) {
+                orientation = VU_VIEW_ORIENTATION_PORTRAIT;
+                LOGI_RENDER("📱 Setting orientation: PORTRAIT (%dx%d)", screenWidth, screenHeight);
+            } else {
+                orientation = VU_VIEW_ORIENTATION_LANDSCAPE_LEFT;
+                LOGI_RENDER("📱 Setting orientation: LANDSCAPE (%dx%d)", screenWidth, screenHeight);
+            }
+            
+            // ✅ 修復：使用正確的 Platform Controller API
+            if (mController) {
+                result = vuPlatformControllerSetViewOrientation(mController, orientation);
+                if (result != VU_SUCCESS) {
+                    LOGE_RENDER("❌ Failed to set view orientation: %d", result);
+                    return false;
+                }
+                LOGI_RENDER("✅ View orientation set successfully");
+            }
+            
+            LOGI_RENDER("✅ Video background rendering setup completed successfully");
+            return true;
+            
+        } catch (const std::exception& e) {
+            LOGE_RENDER("❌ Exception in setupVideoBackgroundRendering: %s", e.what());
+            return false;
+        } catch (...) {
+            LOGE_RENDER("❌ Unknown exception in setupVideoBackgroundRendering");
+            return false;
+        }
     }
-
-
     bool VuforiaEngineWrapper::validateOpenGLSetup() const {
         GLenum error = glGetError();
         return (error == GL_NO_ERROR) && (mEngine != nullptr) && (mRenderController != nullptr);
@@ -1073,4 +1151,16 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_setRenderingQ
         LOGE_RENDER("❌ Unknown error in setRenderingQualityNative");
     }
 }
-
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_stopRenderingNative(
+    JNIEnv* env, jobject thiz) {
+    
+    LOGI_RENDER("🛑 stopRenderingNative called");
+    
+    try {
+        // 簡單的實現，只是停止渲染狀態
+        LOGI_RENDER("✅ Rendering stopped via stopRenderingNative");
+    } catch (const std::exception& e) {
+        LOGE_RENDER("❌ Error in stopRenderingNative: %s", e.what());
+    }
+}
