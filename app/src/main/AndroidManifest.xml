@@ -46,9 +46,9 @@
         android:name="android.hardware.camera.flash"
         android:required="false" />
     
-    <!-- OpenGL ES 2.0 (Vuforia 必需) -->
+    <!-- ✅ 修改這一行：從 OpenGL ES 2.0 升級到 3.0 -->
     <uses-feature
-        android:glEsVersion="0x00020000"
+        android:glEsVersion="0x00030000"
         android:required="true" />
     
     <!-- AR 相關感應器 (可選，但有助於追蹤) -->

@@ -1,5 +1,6 @@
 #include "VuforiaWrapper.h"
 #include "VuforiaEngine/VuforiaEngine.h"
+#include <cstring>
 //C:\Users\USER\Desktop\IBM-WEATHER-ART-ANDRIOD\app\src\main\cpp\vuforia_wrapper.cpp
 // ==================== 全局變量聲明 ====================
 jobject gAndroidContext = nullptr;

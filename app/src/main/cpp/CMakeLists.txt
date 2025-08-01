@@ -100,7 +100,7 @@ set_target_properties(Vuforia PROPERTIES
 # ==================== 查找系統庫 ====================
 find_library(log-lib log)
 find_library(android-lib android)
-find_library(gles2-lib GLESv2)
+find_library(GLES3_LIB GLESv3)
 find_library(egl-lib EGL)
 find_library(jnigraphics-lib jnigraphics)
 find_library(z-lib z)
@@ -233,7 +233,7 @@ target_link_libraries(vuforia_wrapper
     ${android-lib}
     
     # OpenGL ES 相關
-    ${gles2-lib}
+    ${GLES3_LIB}
     ${egl-lib}
     
     # JNI 相關

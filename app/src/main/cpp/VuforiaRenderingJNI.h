@@ -4,29 +4,27 @@
 // ========== 必要的系統頭文件 ==========
 #include <jni.h>
 #include <android/log.h>
-
-// OpenGL ES 2.0 專用頭文件 (Android NDK)
-#include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>
+#include <GLES3/gl3.h>
+#include <GLES2/gl2ext.h> 
 #include "VuforiaEngine/VuforiaEngine.h"
 // C++ 標準庫
 #include <mutex>
 #include <chrono>
 #include <string>
 #include <vector>
-
-// Vuforia Engine 11.x 頭文件
-#include "VuforiaEngine/VuforiaEngine.h"
+#include <cstring>
+#ifndef GL_TEXTURE_EXTERNAL_OES
+#define GL_TEXTURE_EXTERNAL_OES 0x8D65
+#endif
 
 // ========== 日誌宏定義 ==========
 #ifndef LOG_TAG
 #define LOG_TAG "VuforiaRenderingJNI"
 #endif
-#define LOGD_RENDER(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define LOGI_RENDER(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-#define LOGE_RENDER(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-#define LOGW_RENDER(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
-
+#define LOGI_RENDER(...) __android_log_print(ANDROID_LOG_INFO, "VuforiaRender", __VA_ARGS__)
+#define LOGE_RENDER(...) __android_log_print(ANDROID_LOG_ERROR, "VuforiaRender", __VA_ARGS__)
+#define LOGD_RENDER(...) __android_log_print(ANDROID_LOG_DEBUG, "VuforiaRender", __VA_ARGS__)
+#define LOGW_RENDER(...) __android_log_print(ANDROID_LOG_WARN, "VuforiaRender", __VA_ARGS__)
 // ========== 常量定義 ==========
 namespace VuforiaRendering {
     // OpenGL ES 2.0 相關常量

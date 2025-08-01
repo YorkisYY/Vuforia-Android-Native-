@@ -17,13 +17,12 @@
 #include <cstring>  // 添加 memset 支持
 #include <sstream>  // 添加 stringstream 支持
 #include <iomanip>  // 用于 std::setprecision
-#include <GLES2/gl2.h>
-#include <GLES3/gl3.h>       // OpenGL ES 3.0
-#include <GLES2/gl2ext.h>    // OpenGL扩展
+#include <GLES3/gl3.h>       // OpenGL ES 3.0   
 #include <EGL/egl.h>
 #include "VuforiaEngine/VuforiaEngine.h"
-// ==================== Vuforia Engine 11 核心頭文件 ====================
-
+#ifndef GL_TEXTURE_EXTERNAL_OES
+#define GL_TEXTURE_EXTERNAL_OES 0x8D65
+#endif
 // ==================== 日誌宏定義 ====================
 #ifdef LOG_TAG
 #undef LOG_TAG
