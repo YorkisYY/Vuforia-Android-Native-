@@ -11,6 +11,7 @@
 #include <GLES3/gl3.h>
 #include <GLES3/gl3ext.h>
 #include <EGL/egl.h>
+#include <VuforiaEngine/Controller/RenderController.h> 
 #include <mutex>
 #include <chrono>
 #include <memory>
@@ -519,8 +520,8 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_renderFrameWi
     if (!g_renderingState.initialized) {
         return;
     }
-    
-    // ✅ 新增：幀率限制 (60 FPS = 16.67ms per frame)
+
+    // ✅ 幀率限制 (60 FPS = 16.67ms per frame)
     static auto lastRenderTime = std::chrono::steady_clock::now();
     auto currentTime = std::chrono::steady_clock::now();
     auto timeDiff = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -532,17 +533,20 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_renderFrameWi
     lastRenderTime = currentTime;
     
     try {
+        // 獲取Vuforia引擎
         VuEngine* engine = VuforiaWrapper::getInstance().getEngine();
         if (engine == nullptr) {
             return;
         }
         
+        // 獲取最新狀態
         VuState* state = nullptr;
         VuResult result = vuEngineAcquireLatestState(engine, &state);
         if (result != VU_SUCCESS || state == nullptr) {
             return;
         }
         
+        // 獲取渲染狀態
         VuRenderState renderState;
         result = vuStateGetRenderState(state, &renderState);
         if (result != VU_SUCCESS) {
@@ -550,25 +554,56 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_renderFrameWi
             return;
         }
         
-        // ✅ 修改：減少統計頻率
+        // 更新性能統計
         VuforiaRendering::updatePerformanceStats();
         
         // 清除緩衝區
         glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
+        // ⭐ 關鍵：渲染相機背景
         if (g_renderingState.videoBackgroundRenderingEnabled &&
             renderState.vbMesh != nullptr &&
             renderState.vbMesh->numVertices > 0) {
+            
+            // 獲取RenderController
+            VuController* renderController = VuforiaWrapper::getInstance().getRenderController();
+            if (renderController) {
+                // 設置視頻背景數據（OpenGL ES使用NULL）
+                VuRenderVideoBackgroundData vbData;
+                memset(&vbData, 0, sizeof(VuRenderVideoBackgroundData));
+                vbData.renderData = nullptr;     // OpenGL ES使用NULL
+                vbData.textureData = nullptr;    // OpenGL ES使用NULL
+                vbData.textureUnitData = nullptr; // OpenGL ES使用NULL
+                
+                // 更新視頻背景紋理
+                VuResult updateResult = vuRenderControllerUpdateVideoBackgroundTexture(
+                    renderController, 
+                    state,
+                    &vbData
+                );
+                
+                if (updateResult == VU_SUCCESS) {
+                    LOGD_RENDER("✅ Video background texture updated successfully");
+                } else {
+                    LOGW_RENDER("⚠️ Failed to update video background texture: %d", updateResult);
+                }
+            }
+            
+            // 渲染視頻背景（無論紋理更新是否成功都嘗試渲染）
             VuforiaRendering::renderVideoBackgroundWithProperShader(renderState);
         }
         
+        // 釋放狀態
         vuStateRelease(state);
         
     } catch (const std::exception& e) {
         LOGE_RENDER("❌ Exception in renderFrameWithVideoBackgroundNative: %s", e.what());
+    } catch (...) {
+        LOGE_RENDER("❌ Unknown exception in renderFrameWithVideoBackgroundNative");
     }
 }
+
 // ==================== 其他JNI实现 ====================
 
 
@@ -1150,14 +1185,14 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_stopRendering
         LOGE_RENDER("❌ Error in stopRenderingNative: %s", e.what());
     }
 }
-// 1. 加載圖像目標數據庫
+// ✅ 只添加這個缺少的函數
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_loadImageTargetsNative(
-    JNIEnv* env, jobject thiz, jstring database_path) {
-    LOGI("loadImageTargetsNative called");
+Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_initImageTargetDatabaseNative(
+    JNIEnv* env, jobject thiz) {
+    
+    LOGI("initImageTargetDatabaseNative called");
     return JNI_TRUE;
 }
-
 // 2. 開始圖像追蹤
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_startImageTrackingNative(

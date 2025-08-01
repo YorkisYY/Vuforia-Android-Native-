@@ -1055,12 +1055,9 @@ public class VuforiaCoreManager {
      * 安全渲染方法
      */
     public void renderFrameSafely() {
-        if (!isReadyForRendering()) {
-            return; // 靜默返回，不要打印太多日誌
-        }
-        
+        // ✅ 移除每幀檢查，直接渲染
         try {
-            // 🔥 關鍵：這會渲染相機背景 + AR 內容
+            // 🔥 關鍵：這會渲染相機背景 + AR 內容  
             renderFrameWithVideoBackgroundNative();
         } catch (Exception e) {
             Log.e(TAG, "Rendering error: " + e.getMessage());

@@ -570,6 +570,9 @@ namespace VuforiaWrapper {
         // 新增的公共方法 - 解決 VuMesh API 相關編譯錯誤
         void renderVideoBackgroundMesh(const VuRenderState& renderState);
         VuEngine* getEngine() const { return mEngine; }
+        VuController* getRenderController() const { 
+        return mRenderController; 
+    }
     };
 }
 

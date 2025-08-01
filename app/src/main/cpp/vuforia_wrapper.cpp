@@ -1539,12 +1539,6 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_loadImageTarg
     return success ? JNI_TRUE : JNI_FALSE;
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_startImageTrackingNative(
-    JNIEnv* env, jobject thiz) {
-    
-    return VuforiaWrapper::getInstance().startImageTracking() ? JNI_TRUE : JNI_FALSE;
-}
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_getVuforiaVersionNative(

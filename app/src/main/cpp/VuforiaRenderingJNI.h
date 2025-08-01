@@ -7,6 +7,7 @@
 #include <GLES3/gl3.h>
 #include <GLES2/gl2ext.h> 
 #include "VuforiaEngine/VuforiaEngine.h"
+#include <VuforiaEngine/Controller/RenderController.h> 
 // C++ 標準庫
 #include <mutex>
 #include <chrono>
