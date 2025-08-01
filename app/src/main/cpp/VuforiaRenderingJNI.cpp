@@ -83,7 +83,7 @@ namespace VuforiaRendering {
             g_renderingState.lastFrameTime = currentTime;
             g_renderingState.totalFrameCount++;
             
-            if (g_renderingState.totalFrameCount % 100 == 0) {
+            if (g_renderingState.totalFrameCount % 1000 == 0) {
                 LOGD_RENDER("📊 Performance: FPS=%.2f, Frames=%ld", 
                            g_renderingState.currentFPS, g_renderingState.totalFrameCount);
             }
@@ -220,33 +220,44 @@ namespace VuforiaRendering {
     // 渲染視頻背景
     void renderVideoBackgroundWithProperShader(const VuRenderState& renderState) {
         if (!g_renderingState.initialized || g_renderingState.videoBackgroundShaderProgram == 0) {
-            LOGW_RENDER("⚠️ Rendering not initialized");
             return;
         }
         
         try {
             if (renderState.vbMesh == nullptr) {
-                LOGW_RENDER("⚠️ vbMesh is null - skipping video background rendering");
                 return;
             }
             
-            // 设置OpenGL状态
-            glDisable(GL_DEPTH_TEST);
-            glDisable(GL_CULL_FACE);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            
-            // 使用着色器程序
-            glUseProgram(g_renderingState.videoBackgroundShaderProgram);
-            
-            // 激活并绑定相机纹理
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_EXTERNAL_OES, g_renderingState.videoBackgroundTextureId);
-            GLint textureLocation = glGetUniformLocation(g_renderingState.videoBackgroundShaderProgram, "u_cameraTexture");
-            if (textureLocation != -1) {
-                glUniform1i(textureLocation, 0);
+            // ✅ 新增：避免重複的 OpenGL 狀態切換
+            static bool glStatesInitialized = false;
+            if (!glStatesInitialized) {
+                glDisable(GL_DEPTH_TEST);
+                glDisable(GL_CULL_FACE);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glStatesInitialized = true;
             }
             
+            // ✅ 新增：避免重複綁定相同的著色器
+            static GLuint lastUsedProgram = 0;
+            if (lastUsedProgram != g_renderingState.videoBackgroundShaderProgram) {
+                glUseProgram(g_renderingState.videoBackgroundShaderProgram);
+                lastUsedProgram = g_renderingState.videoBackgroundShaderProgram;
+            }
+            
+            // ✅ 新增：避免重複綁定相同的紋理
+            static GLuint lastBoundTexture = 0;
+            if (lastBoundTexture != g_renderingState.videoBackgroundTextureId) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_EXTERNAL_OES, g_renderingState.videoBackgroundTextureId);
+                lastBoundTexture = g_renderingState.videoBackgroundTextureId;
+                
+                GLint textureLocation = glGetUniformLocation(g_renderingState.videoBackgroundShaderProgram, "u_cameraTexture");
+                if (textureLocation != -1) {
+                    glUniform1i(textureLocation, 0);
+                }
+            }
+                
             // 设置顶点属性
             GLint positionAttribute = glGetAttribLocation(g_renderingState.videoBackgroundShaderProgram, "a_position");
             GLint texCoordAttribute = glGetAttribLocation(g_renderingState.videoBackgroundShaderProgram, "a_texCoord");
@@ -288,10 +299,7 @@ namespace VuforiaRendering {
             glUseProgram(0);
         }
     }
-}
-
-    // 調試渲染狀態 - 完全修正版本
-    void debugRenderState(const VuRenderState& renderState) {
+        void debugRenderState(const VuRenderState& renderState) {
         LOGD_RENDER("🔍 Render State Debug Info:");
         
         if (renderState.vbMesh != nullptr) {
@@ -321,6 +329,9 @@ namespace VuforiaRendering {
             LOGD_RENDER("❌ vbMesh is null");
         }
     }
+
+}
+
 namespace VuforiaWrapper {
 
     bool VuforiaEngineWrapper::initializeOpenGLResources() {
@@ -439,27 +450,35 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_renderFrameWithVideoBackgroundNative(
     JNIEnv* env, jobject thiz) {
     
-    std::lock_guard<std::mutex> lock(g_renderingMutex);  // ✅ 修正：直接使用變數名
+    std::lock_guard<std::mutex> lock(g_renderingMutex);
     
-    if (!g_renderingState.initialized) {  // ✅ 修正：直接使用變數名
+    if (!g_renderingState.initialized) {
         return;
     }
     
+    // ✅ 新增：幀率限制 (60 FPS = 16.67ms per frame)
+    static auto lastRenderTime = std::chrono::steady_clock::now();
+    auto currentTime = std::chrono::steady_clock::now();
+    auto timeDiff = std::chrono::duration_cast<std::chrono::milliseconds>(
+        currentTime - lastRenderTime).count();
+    
+    if (timeDiff < 16) {  // 限制最高 60 FPS
+        return;  // 跳過這一幀，減少渲染頻率
+    }
+    lastRenderTime = currentTime;
+    
     try {
-        // ✅ 修正：使用公共方法獲取引擎
         VuEngine* engine = VuforiaWrapper::getInstance().getEngine();
         if (engine == nullptr) {
             return;
         }
         
-        // 獲取Vuforia狀態
         VuState* state = nullptr;
         VuResult result = vuEngineAcquireLatestState(engine, &state);
         if (result != VU_SUCCESS || state == nullptr) {
             return;
         }
         
-        // 獲取渲染狀態
         VuRenderState renderState;
         result = vuStateGetRenderState(state, &renderState);
         if (result != VU_SUCCESS) {
@@ -467,21 +486,19 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_renderFrameWi
             return;
         }
         
-        // 更新性能統計
+        // ✅ 修改：減少統計頻率
         VuforiaRendering::updatePerformanceStats();
         
         // 清除緩衝區
         glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        // ✅ 修正：使用正確的條件檢查
-        if (g_renderingState.videoBackgroundRenderingEnabled &&  // ✅ 修正：直接使用變數名
+        if (g_renderingState.videoBackgroundRenderingEnabled &&
             renderState.vbMesh != nullptr &&
             renderState.vbMesh->numVertices > 0) {
             VuforiaRendering::renderVideoBackgroundWithProperShader(renderState);
         }
         
-        // 釋放狀態
         vuStateRelease(state);
         
     } catch (const std::exception& e) {
@@ -754,30 +771,30 @@ Java_com_example_ibm_1ai_1weather_1art_1android_VuforiaCoreManager_onSurfaceCrea
     LOGI_RENDER("🖼️ onSurfaceCreatedNative called: %dx%d", width, height);
     
     try {
-        // 首先处理surface创建
-        VuforiaWrapper::getInstance().onSurfaceCreated(static_cast<int>(width), static_cast<int>(height));
-        LOGI_RENDER("✅ Surface creation processed: %dx%d", width, height);
+        // ✅ 新增：避免重複初始化
+        static bool surfaceInitialized = false;
+        if (surfaceInitialized) {
+            LOGW_RENDER("⚠️ Surface already initialized, skipping duplicate initialization");
+            return;
+        }
         
-        // 然后初始化OpenGL资源（如果还没有初始化）
+        VuforiaWrapper::getInstance().onSurfaceCreated(static_cast<int>(width), static_cast<int>(height));
+        
         if (!g_renderingState.initialized) {
-            LOGI_RENDER("🎨 Auto-initializing OpenGL resources after surface creation");
             if (VuforiaWrapper::getInstance().initializeOpenGLResources()) {
-                LOGI_RENDER("✅ OpenGL resources auto-initialized successfully");
-            } else {
-                LOGE_RENDER("❌ Failed to auto-initialize OpenGL resources");
+                LOGI_RENDER("✅ OpenGL resources initialized successfully");
+                g_renderingState.initialized = true;
             }
         }
         
-        // 自动启动渲染循环（如果引擎已准备好）
         if (VuforiaWrapper::getInstance().isEngineRunning()) {
-            LOGI_RENDER("🚀 Auto-starting rendering loop after surface creation");
             VuforiaWrapper::getInstance().startRenderingLoop();
         }
         
+        surfaceInitialized = true;  // ✅ 標記已初始化
+        
     } catch (const std::exception& e) {
         LOGE_RENDER("❌ Error in onSurfaceCreatedNative: %s", e.what());
-    } catch (...) {
-        LOGE_RENDER("❌ Unknown error in onSurfaceCreatedNative");
     }
 }
 

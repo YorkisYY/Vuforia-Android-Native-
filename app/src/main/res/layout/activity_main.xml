@@ -1,13 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/cameraContainer"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#000000"
+    tools:context=".MainActivity">
 
-    <!-- 这个 SurfaceView 让 Vuforia 自动使用 -->
+    <!-- 主相機容器 - GLSurfaceView 會動態添加到這裡 -->
+    <FrameLayout
+        android:id="@+id/cameraContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000" />
+
+    <!-- 移除原來的 SurfaceView，因為我們改用 GLSurfaceView -->
+    <!-- 
     <SurfaceView
         android:id="@+id/filamentSurface"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
+    -->
 
-</FrameLayout> 
+</FrameLayout>

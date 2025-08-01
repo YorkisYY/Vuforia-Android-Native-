@@ -28,7 +28,14 @@ public class VuforiaCoreManager {
     private boolean modelLoaded = false;
     private static boolean gTargetDetectionActive = false;
     private boolean vuforiaReady = false;
+        // OpenGL 渲染相關
+    private native boolean initializeOpenGLResourcesNative();
+    private native boolean setupVideoBackgroundRenderingNative();
+    private native boolean validateRenderingSetupNative();
+    private native void renderFrameWithVideoBackgroundNative();
     
+    // Surface 管理相關
+    private native void onSurfaceChangedNative(int width, int height);
     // 🔧 添加：渲染相關變量
     private Thread renderingThread;
     private volatile boolean isRenderingActive = false;
@@ -715,11 +722,14 @@ public class VuforiaCoreManager {
                 return false;
             }
             
-            // ✅ 調用正確的 native 方法
+            // 1. 啟動 Vuforia 引擎
             boolean engineStarted = startVuforiaEngineNative();
             
             if (engineStarted) {
                 Log.d(TAG, "✅ Vuforia Engine started successfully");
+                // ⏳ OpenGL 初始化會在有上下文時自動進行
+                Log.d(TAG, "⏳ OpenGL 初始化會在有上下文時自動進行");
+
                 return true;
             } else {
                 Log.e(TAG, "❌ Failed to start Vuforia Engine");
@@ -730,24 +740,70 @@ public class VuforiaCoreManager {
             return false;
         }
     }
-    // 🔧 添加：简单的渲染循环
-    private void startSimpleRenderingLoop() {
-        if (renderingThread != null) return;
+
+    // ✅ 添加新方法：初始化 Vuforia OpenGL
+    public boolean initializeVuforiaOpenGLWhenReady() {
+        Log.d(TAG, "🎨 Initializing Vuforia OpenGL rendering (with context)...");
         
-        renderingThread = new Thread(() -> {
-            while (isVuforiaRunning()) {
-                try {
-                    // 🎯 只调用这一个方法，Vuforia 会自动显示相机
-                    renderFrameNative();
-                    Thread.sleep(16); // 60 FPS
-                } catch (InterruptedException e) {
-                    break;
-                } catch (Exception e) {
-                    Log.e(TAG, "Rendering error", e);
-                }
+        try {
+            // 1. 初始化 OpenGL 資源
+            boolean glInit = initializeOpenGLResourcesNative();
+            Log.d(TAG, "OpenGL initialized: " + glInit);
+            
+            // 2. 設置視頻背景渲染
+            boolean bgSetup = setupVideoBackgroundRenderingNative();
+            Log.d(TAG, "Video background setup: " + bgSetup);
+            
+            // 3. 驗證渲染設置
+            boolean renderValid = validateRenderingSetupNative();
+            Log.d(TAG, "Rendering setup valid: " + renderValid);
+            
+            // 4. 開始持續渲染
+            if (glInit && bgSetup && renderValid) {
+                startContinuousVuforiaRendering();
+                Log.d(TAG, "✅ OpenGL rendering initialized successfully with context");
+                return true;
+            } else {
+                Log.e(TAG, "❌ Failed to setup OpenGL rendering properly");
+                return false;
             }
-        });
-        renderingThread.start();
+            
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error initializing Vuforia OpenGL", e);
+            return false;
+        }
+    }
+
+    // ✅ 添加新方法：持續渲染
+    private void startContinuousVuforiaRendering() {
+        Log.d(TAG, "🚀 Starting continuous Vuforia rendering...");
+        
+        isRenderingActive = true;
+        
+        // 創建渲染線程
+        if (renderingThread == null || !renderingThread.isAlive()) {
+            renderingThread = new Thread(() -> {
+                Log.d(TAG, "📸 Vuforia rendering thread started");
+                
+                while (isRenderingActive && isVuforiaEngineRunningNative()) {
+                    try {
+                        // ⭐ 關鍵：持續調用 Vuforia 渲染
+                        renderFrameWithVideoBackgroundNative();
+                        Thread.sleep(16); // 60 FPS
+                    } catch (InterruptedException e) {
+                        Log.d(TAG, "Rendering thread interrupted");
+                        break;
+                    } catch (Exception e) {
+                        Log.e(TAG, "Rendering error: " + e.getMessage());
+                        // 繼續運行，不要停止
+                    }
+                }
+                
+                Log.d(TAG, "📸 Vuforia rendering thread stopped");
+            });
+            
+            renderingThread.start();
+        }
     }
     
     private boolean isVuforiaRunning() {
@@ -927,22 +983,35 @@ public class VuforiaCoreManager {
                 surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
                     @Override
                     public void surfaceCreated(SurfaceHolder holder) {
-                        Log.d(TAG, "🖼️ Surface created");
+                        Log.d(TAG, "🖼️ Surface created - Ready for rendering");
+                        // 不需要特別處理，等待 surfaceChanged
                     }
-                    
+
                     @Override
                     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
                         Log.d(TAG, "🖼️ Surface changed: " + width + "x" + height);
                         try {
-                            onSurfaceCreatedNative(width, height);
+                            // 通知 native 層 surface 變化
+                            onSurfaceChangedNative(width, height);
+                            
+                            // 如果 Vuforia 已經運行但 OpenGL 沒初始化，現在初始化
+                            if (isVuforiaEngineRunningNative() && !isRenderingActive) {
+                                Log.d(TAG, "🎨 Surface ready - Starting OpenGL rendering");
+                                Log.d(TAG, "⏳ OpenGL 初始化會在有上下文時自動進行");;
+                            }
+                            
                         } catch (Exception e) {
                             Log.e(TAG, "Error handling surface change", e);
                         }
                     }
-                    
+
                     @Override
                     public void surfaceDestroyed(SurfaceHolder holder) {
                         Log.d(TAG, "🖼️ Surface destroyed");
+                        
+                        // 停止渲染
+                        isRenderingActive = false;
+                        
                         try {
                             onSurfaceDestroyedNative();
                         } catch (Exception e) {
@@ -958,7 +1027,88 @@ public class VuforiaCoreManager {
             Log.e(TAG, "❌ Error setting up rendering surface", e);
         }
     }
+     /** 處理 Surface 變化
+     */
+    public void handleSurfaceChanged(int width, int height) {
+        Log.d(TAG, "🖼️ Handling surface change: " + width + "x" + height);
+        
+        try {
+            // 通知 native 層 surface 變化
+            onSurfaceChangedNative(width, height);
+            
+            // 如果 Vuforia 已經運行但 OpenGL 沒初始化，現在初始化
+            if (isVuforiaEngineRunningNative() && !isRenderingActive) {
+                Log.d(TAG, "🎨 Surface ready - Initializing OpenGL rendering");
+                if (initializeVuforiaOpenGLWhenReady()) {
+                    Log.d(TAG, "✅ OpenGL initialized successfully after surface change");
+                } else {
+                    Log.e(TAG, "❌ Failed to initialize OpenGL after surface change");
+                }
+            }
+            
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error handling surface change", e);
+        }
+    }
+
+    /**
+     * 安全渲染方法
+     */
+    public void renderFrameSafely() {
+        if (!isReadyForRendering()) {
+            return; // 靜默返回，不要打印太多日誌
+        }
+        
+        try {
+            // 🔥 關鍵：這會渲染相機背景 + AR 內容
+            renderFrameWithVideoBackgroundNative();
+        } catch (Exception e) {
+            Log.e(TAG, "Rendering error: " + e.getMessage());
+            // 不要停止渲染，繼續嘗試
+        }
+    }
+
+    /**
+     * 檢查是否可以開始渲染
+     */
+    public boolean isReadyForRendering() {
+        try {
+            return isVuforiaEngineRunningNative() && 
+                   isRenderingActive && 
+                   validateRenderingSetupNative();
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking rendering readiness", e);
+            return false;
+        }
+    }
     
+    /**
+     * 檢查 OpenGL 是否已初始化
+     */
+    public boolean isOpenGLInitialized() {
+        try {
+            return validateRenderingSetupNative();
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking OpenGL status", e);
+            return false;
+        }
+    }
+    
+    /**
+     * 獲取渲染狀態診斷信息
+     */
+    public String getRenderingDiagnostics() {
+        try {
+            StringBuilder diag = new StringBuilder();
+            diag.append("OpenGL initialized: ").append(isOpenGLInitialized()).append("\n");
+            diag.append("Vuforia running: ").append(isVuforiaEngineRunningNative()).append("\n");
+            diag.append("Camera active: ").append(isCameraActiveNative()).append("\n");
+            diag.append("Rendering active: ").append(isRenderingActive).append("\n");
+            return diag.toString();
+        } catch (Exception e) {
+            return "Diagnostics error: " + e.getMessage();
+        }
+    }
     // ==================== 🔧 修改：生命週期方法 ====================
     
     // 注意：pauseVuforia() 和 resumeVuforia() 方法已經存在於第307-340行
