@@ -4,7 +4,7 @@
 [![Vuforia](https://img.shields.io/badge/Vuforia-11.3.4-blue.svg)](https://developer.vuforia.com/)
 [![OpenGL](https://img.shields.io/badge/OpenGL%20ES-3.0-orange.svg)](https://www.khronos.org/opengles/)
 [![Min SDK](https://img.shields.io/badge/Min%20SDK-24-brightgreen.svg)](https://developer.android.com/about/versions/nougat)
-[![License](https://img.shields.io/badge/license-MIT-red.svg)](LICENSE)
+
 
 An advanced AR application that combines weather data visualization with 3D models, built using Vuforia Engine 11.3.4's Native C++ API for optimal Android performance.
 
@@ -483,10 +483,6 @@ app/
 3. Commit changes (`git commit -m 'Add Amazing Feature'`)
 4. Push to branch (`git push origin feature/Amazing`)
 5. Open Pull Request
-
-## 📄 License
-
-MIT License - See [LICENSE](LICENSE) file for details
 
 ## 🙏 Acknowledgments
 
