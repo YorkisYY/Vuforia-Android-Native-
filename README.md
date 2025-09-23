@@ -1,4 +1,4 @@
-#Vuforia android sdk AR Application
+# Vuforia Android SDK AR Application
 
 [![Platform](https://img.shields.io/badge/platform-Android-green.svg)](https://www.android.com)
 [![Vuforia](https://img.shields.io/badge/Vuforia-11.3.4-blue.svg)](https://developer.vuforia.com/)
